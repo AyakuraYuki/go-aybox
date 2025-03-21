@@ -5,5 +5,5 @@ A bunch of miscellaneous methods in the box.
 ## Usage
 
 ```shell
-go get -u github.com/AyakuraYuki/go-aybox
+go get -u github.com/AyakuraYuki/go-aybox@latest
 ```
