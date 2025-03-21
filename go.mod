@@ -1,4 +1,4 @@
-module github.com/AyakuraYuki/go-aybox/aybox
+module github.com/AyakuraYuki/go-aybox
 
 go 1.24
 
