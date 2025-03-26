@@ -12,70 +12,80 @@ type AgeNumber interface {
 		uint | uint8 | uint16 | uint32 | uint64
 }
 
+func IsLeapYear(date time.Time) bool {
+	year := date.Year()
+	if year%400 == 0 || (year%4 == 0 && year%100 != 0) {
+		return true
+	}
+	return false
+}
+
 // region Real Age
 
-// CalculateRealAge returns the real age from some birthday to now, accept
-// given timezone for the calculation.
+// CalculateRealAge returns the real age from birthday to now.
 //
-// There are some examples of timezone, like `America/Los_Angeles` and
-// `Asia/Shanghai`.
-//
-// 计算一个出生日期到现在的实岁。可以指定时区。
-// 这里给出一些时区的例子，如 `America/Los_Angeles`，或者 `Asia/Shanghai`。
-func CalculateRealAge[T AgeNumber](birthday time.Time, timezone ...string) (age T) {
-	now := time.Now()
-	if len(timezone) > 0 {
-		loc, err := time.LoadLocation(timezone[0])
-		if err != nil {
-			return 0 // unknown timezone resulting 0 age
-		}
-		birthday = birthday.In(loc)
-		now = now.In(loc)
+// 计算一个出生日期到现在的实岁。
+func CalculateRealAge[T AgeNumber](birthday time.Time) (age T) {
+	date := birthday
+	now := time.Now().In(date.Location())
+
+	if !IsLeapYear(now) && date.Month() == time.February && date.Day() == 29 {
+		// in non-leap years, 02-29 is converted to 03-01
+		date = date.AddDate(0, 0, 1)
 	}
-	if now.Before(birthday) {
+
+	if now.Before(date) {
+		// man, are you sure your birthday is before than now?
 		return 0
 	}
-	years := now.Year() - birthday.Year()
-	if now.Month() < birthday.Month() || (now.Month() == birthday.Month() && now.Day() < birthday.Day()) {
+
+	years := now.Year() - date.Year()
+	if now.Month() < date.Month() || (now.Month() == date.Month() && now.Day() < date.Day()) {
 		years--
 	}
 	return T(years)
 }
 
-// CalculateRealAgeFromString accepts a date string in layout `2006-01-02`
-// to calculate the real age, accept given timezone for the calculation.
+// CalculateRealAgeFromString accepts a date string in time.DateOnly
+// to calculate the real age. Use UTC timezone for calculation.
 //
-// There are some examples of timezone, like `America/Los_Angeles` and
-// `Asia/Shanghai`.
-//
-// 接受一个格式符合 `2006-01-02` 的日期，计算现在到这个日期的实岁。可以指定时区。
-// 这里给出一些时区的例子，如 `America/Los_Angeles`，或者 `Asia/Shanghai`。
-func CalculateRealAgeFromString[T AgeNumber](date string, timezone ...string) (age T) {
-	if strings.TrimSpace(date) == "" {
+// 接受一个格式符合 time.DateOnly 的日期，计算现在到这个日期的实岁。使用UTC零时区计算。
+func CalculateRealAgeFromString[T AgeNumber](date string) (age T) {
+	date = strings.TrimSpace(date)
+	if date == "" {
 		return T(0)
 	}
-	birthday := carbon.ParseByLayout(date, time.DateOnly, timezone...)
-	return CalculateRealAgeFromCarbon[T](birthday, timezone...)
+	birthday := carbon.ParseByLayout(date, time.DateOnly, carbon.UTC)
+	return CalculateRealAgeFromCarbon[T](birthday)
 }
 
-// CalculateRealAgeFromCarbon returns the real age from some birthday to now, accept
-// given timezone for the calculation.
+// CalculateRealAgeFromCarbon returns the real age from birthday to now.
 //
-// There are some examples of timezone, like `America/Los_Angeles` and
-// `Asia/Shanghai`.
-//
-// 计算一个出生日期到现在的实岁。可以指定时区。
-// 这里给出一些时区的例子，如 `America/Los_Angeles`，或者 `Asia/Shanghai`。
-func CalculateRealAgeFromCarbon[T AgeNumber](birthday *carbon.Carbon, timezone ...string) (age T) {
-	if len(timezone) > 0 {
-		birthday.SetTimezone(timezone[0])
+// 计算一个出生日期到现在的实岁。
+func CalculateRealAgeFromCarbon[T AgeNumber](birthday *carbon.Carbon) (age T) {
+	if birthday == nil {
+		return T(0) // 0 when birthday is nil
 	}
-	now := carbon.Now(timezone...)
-	if now.Lt(birthday) {
+
+	date := birthday.Copy() // do not modify the original date
+	if date.HasError() {
+		// cannot calculate an age with broken time instance
+		return T(0)
+	}
+
+	now := carbon.Now(date.Timezone())
+	if !now.IsLeapYear() && date.Month() == 2 && date.Day() == 29 {
+		// in non-leap years, 02-29 is converted to 03-01
+		date = date.AddDay()
+	}
+
+	if now.Lt(date) {
+		// man, are you sure your birthday is before than now?
 		return 0
 	}
-	years := now.Year() - birthday.Year()
-	if now.Month() < birthday.Month() || (now.Month() == birthday.Month() && now.Day() < birthday.Day()) {
+
+	years := now.Year() - date.Year()
+	if now.Month() < date.Month() || (now.Month() == date.Month() && now.Day() < date.Day()) {
 		years--
 	}
 	return T(years)
@@ -110,12 +120,10 @@ func CalculateNominalAgeFromCarbon[T AgeNumber](birthday *carbon.Carbon) (age T)
 	timezone := carbon.Shanghai
 
 	birthday = birthday.SetTimezone(timezone)
-	lunarNewYearInBirthYear := carbon.CreateFromLunar(birthday.Year(), 1, 1, 0, 0, 0, birthday.IsLeapYear())
-	lunarNewYearInBirthYear = lunarNewYearInBirthYear.SetTimezone(timezone)
+	lunarNewYearInBirthYear := lunarNewYearInThatYear(birthday)
 
 	now := carbon.Now(timezone)
-	lunarNewYear := carbon.CreateFromLunar(now.Year(), 1, 1, 0, 0, 0, now.IsLeapYear())
-	lunarNewYear = lunarNewYear.SetTimezone(timezone)
+	lunarNewYear := lunarNewYearInThatYear(now)
 
 	years := now.Year() - birthday.Year()
 	if birthday.Lt(lunarNewYearInBirthYear) {
@@ -125,6 +133,18 @@ func CalculateNominalAgeFromCarbon[T AgeNumber](birthday *carbon.Carbon) (age T)
 		years++
 	}
 	return T(years)
+}
+
+func lunarNewYearInThatYear(date *carbon.Carbon) (lunarNewYear *carbon.Carbon) {
+	timezone := carbon.Shanghai
+
+	copied := date.Copy()
+	copied = copied.SetTimezone(timezone)
+
+	lunarNewYear = carbon.CreateFromLunar(copied.Year(), 1, 1, 0, 0, 0, copied.IsLeapYear())
+	lunarNewYear = lunarNewYear.SetTimezone(timezone)
+
+	return
 }
 
 // endregion
