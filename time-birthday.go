@@ -66,7 +66,7 @@ func CalculateRealAgeFromString[T AgeNumber](date string, timezone ...string) (a
 //
 // 计算一个出生日期到现在的实岁。可以指定时区。
 // 这里给出一些时区的例子，如 `America/Los_Angeles`，或者 `Asia/Shanghai`。
-func CalculateRealAgeFromCarbon[T AgeNumber](birthday carbon.Carbon, timezone ...string) (age T) {
+func CalculateRealAgeFromCarbon[T AgeNumber](birthday *carbon.Carbon, timezone ...string) (age T) {
 	if len(timezone) > 0 {
 		birthday.SetTimezone(timezone[0])
 	}
@@ -106,7 +106,7 @@ func CalculateNominalAge[T AgeNumber](birthday time.Time) (age T) {
 // standard.
 //
 // 计算一个出生日期到现在的虚岁。虚岁是传统中国的记岁方法，固定使用 Asia/Shanghai 时区。
-func CalculateNominalAgeFromCarbon[T AgeNumber](birthday carbon.Carbon) (age T) {
+func CalculateNominalAgeFromCarbon[T AgeNumber](birthday *carbon.Carbon) (age T) {
 	timezone := carbon.Shanghai
 
 	birthday = birthday.SetTimezone(timezone)
