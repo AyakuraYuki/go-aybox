@@ -1,6 +1,7 @@
 package aybox
 
 import (
+	"strings"
 	"time"
 
 	"github.com/dromara/carbon/v2"
@@ -50,6 +51,9 @@ func CalculateRealAge[T AgeNumber](birthday time.Time, timezone ...string) (age 
 // 接受一个格式符合 `2006-01-02` 的日期，计算现在到这个日期的实岁。可以指定时区。
 // 这里给出一些时区的例子，如 `America/Los_Angeles`，或者 `Asia/Shanghai`。
 func CalculateRealAgeFromString[T AgeNumber](date string, timezone ...string) (age T) {
+	if strings.TrimSpace(date) == "" {
+		return T(0)
+	}
 	birthday := carbon.ParseByLayout(date, time.DateOnly, timezone...)
 	return CalculateRealAgeFromCarbon[T](birthday, timezone...)
 }
