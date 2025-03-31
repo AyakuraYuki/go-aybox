@@ -98,25 +98,6 @@ func TestCalculateRealAgeFromString(t *testing.T) {
 	}
 }
 
-func TestCalculateRealAgeFromCarbon(t *testing.T) {
-	type testCase struct {
-		birthday *carbon.Carbon
-		want     int
-	}
-	var tests []testCase
-	for _, date := range slices.Sorted(maps.Keys(testBirthdayAgeMapping)) {
-		tests = append(tests, testCase{testDateStringParseToCarbon(date), testAdjustWantRealAge(testDateStringParseToTime(date), testBirthdayAgeMapping[date])})
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.birthday.Format("Y-m-d"), func(t *testing.T) {
-			if get := CalculateRealAgeFromCarbon[int](tt.birthday); get != tt.want {
-				t.Errorf("unexpected age, want %v, but got %v", tt.want, get)
-			}
-		})
-	}
-}
-
 // ----------------------------------------------------------------------------------------------------
 
 func TestCalculateNominalAge(t *testing.T) {

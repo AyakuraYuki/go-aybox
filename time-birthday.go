@@ -55,8 +55,11 @@ func CalculateRealAgeFromString[T AgeNumber](date string) (age T) {
 	if date == "" {
 		return T(0)
 	}
-	birthday := carbon.ParseByLayout(date, time.DateOnly, carbon.UTC)
-	return CalculateRealAgeFromCarbon[T](birthday)
+	birthday, err := time.Parse(time.DateOnly, date)
+	if err != nil {
+		return T(0)
+	}
+	return CalculateRealAge[T](birthday)
 }
 
 // CalculateRealAgeFromCarbon returns the real age from birthday to now.
