@@ -12,8 +12,6 @@ type AgeNumber interface {
 		uint | uint8 | uint16 | uint32 | uint64
 }
 
-// region Real Age
-
 // CalculateRealAge returns the real age from birthday to now.
 //
 // 计算一个出生日期到现在的实岁。
@@ -54,6 +52,35 @@ func CalculateRealAgeFromString[T AgeNumber](date string) (age T) {
 	return CalculateRealAge[T](birthday)
 }
 
+// CalculateNominalAge returns the Xusui (known as nominal age) from some
+// birthday to now.
+//
+// Xusui, the nominal age system, a traditional Chinese age reckoning
+// method, is consistently calculated using the Asia/Shanghai time zone
+// standard.
+//
+// 计算一个出生日期到现在的虚岁。虚岁是传统中国的记岁方法，固定使用 Asia/Shanghai 时区。
+func CalculateNominalAge[T AgeNumber](birthday time.Time) (age T) {
+	loc, _ := time.LoadLocation(AsiaShanghai)
+
+	birthday = birthday.In(loc)
+	lunarNewYearInBirthYear := lunar.FromLunar(birthday.Year(), 1, 1, false).ToGregorian(AsiaShanghai)
+
+	now := time.Now().In(loc)
+	lunarNewYear := lunar.FromLunar(now.Year(), 1, 1, false).ToGregorian(AsiaShanghai)
+
+	years := now.Year() - birthday.Year()
+	if birthday.Before(lunarNewYearInBirthYear.Time) {
+		years++
+	}
+	if now.After(lunarNewYear.Time) {
+		years++
+	}
+	return T(years)
+}
+
+// ----------------------------------------------------------------------------------------------------
+
 // // CalculateRealAgeFromCarbon returns the real age from birthday to now.
 // //
 // // 计算一个出生日期到现在的实岁。
@@ -85,38 +112,7 @@ func CalculateRealAgeFromString[T AgeNumber](date string) (age T) {
 // 	}
 // 	return T(years)
 // }
-
-// endregion
-
-// region Nominal Age
-
-// CalculateNominalAge returns the Xusui (known as nominal age) from some
-// birthday to now.
 //
-// Xusui, the nominal age system, a traditional Chinese age reckoning
-// method, is consistently calculated using the Asia/Shanghai time zone
-// standard.
-//
-// 计算一个出生日期到现在的虚岁。虚岁是传统中国的记岁方法，固定使用 Asia/Shanghai 时区。
-func CalculateNominalAge[T AgeNumber](birthday time.Time) (age T) {
-	loc, _ := time.LoadLocation(AsiaShanghai)
-
-	birthday = birthday.In(loc)
-	lunarNewYearInBirthYear := lunar.FromLunar(birthday.Year(), 1, 1, false).ToGregorian(AsiaShanghai)
-
-	now := time.Now().In(loc)
-	lunarNewYear := lunar.FromLunar(now.Year(), 1, 1, false).ToGregorian(AsiaShanghai)
-
-	years := now.Year() - birthday.Year()
-	if birthday.Before(lunarNewYearInBirthYear.Time) {
-		years++
-	}
-	if now.After(lunarNewYear.Time) {
-		years++
-	}
-	return T(years)
-}
-
 // // CalculateNominalAgeFromCarbon returns the Xusui (known as nominal age) from
 // // some birthday to now.
 // //
@@ -155,5 +151,3 @@ func CalculateNominalAge[T AgeNumber](birthday time.Time) (age T) {
 //
 // 	return
 // }
-
-// endregion
