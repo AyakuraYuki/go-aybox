@@ -1,4 +1,4 @@
-package aybox
+package time
 
 import (
 	"strings"
@@ -10,14 +10,6 @@ import (
 type AgeNumber interface {
 	int | int8 | int16 | int32 | int64 |
 		uint | uint8 | uint16 | uint32 | uint64
-}
-
-func IsLeapYear(date time.Time) bool {
-	year := date.Year()
-	if year%400 == 0 || (year%4 == 0 && year%100 != 0) {
-		return true
-	}
-	return false
 }
 
 // region Real Age

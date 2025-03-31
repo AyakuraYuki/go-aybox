@@ -1,4 +1,4 @@
-package aybox
+package time
 
 import (
 	"maps"
