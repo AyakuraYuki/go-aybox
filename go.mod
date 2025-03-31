@@ -3,7 +3,7 @@ module github.com/AyakuraYuki/go-aybox
 go 1.24
 
 require (
-	github.com/dromara/carbon/v2 v2.6.0
+	github.com/dromara/carbon/v2 v2.6.1
 	github.com/stretchr/testify v1.10.0
 )
 
