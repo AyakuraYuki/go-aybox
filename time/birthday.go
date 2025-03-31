@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dromara/carbon/v2"
+	"github.com/AyakuraYuki/go-aybox/time/calendar/lunar"
 )
 
 type AgeNumber interface {
@@ -54,37 +54,37 @@ func CalculateRealAgeFromString[T AgeNumber](date string) (age T) {
 	return CalculateRealAge[T](birthday)
 }
 
-// CalculateRealAgeFromCarbon returns the real age from birthday to now.
+// // CalculateRealAgeFromCarbon returns the real age from birthday to now.
+// //
+// // 计算一个出生日期到现在的实岁。
+// func CalculateRealAgeFromCarbon[T AgeNumber](birthday *carbon.Carbon) (age T) {
+// 	if birthday == nil {
+// 		return T(0) // 0 when birthday is nil
+// 	}
 //
-// 计算一个出生日期到现在的实岁。
-func CalculateRealAgeFromCarbon[T AgeNumber](birthday *carbon.Carbon) (age T) {
-	if birthday == nil {
-		return T(0) // 0 when birthday is nil
-	}
-
-	date := birthday.Copy() // do not modify the original date
-	if date.HasError() {
-		// cannot calculate an age with broken time instance
-		return T(0)
-	}
-
-	now := carbon.Now(date.Timezone())
-	if !now.IsLeapYear() && date.Month() == 2 && date.Day() == 29 {
-		// in non-leap years, 02-29 is converted to 03-01
-		date = date.AddDay()
-	}
-
-	if now.Lt(date) {
-		// man, are you sure your birthday is before than now?
-		return 0
-	}
-
-	years := now.Year() - date.Year()
-	if now.Month() < date.Month() || (now.Month() == date.Month() && now.Day() < date.Day()) {
-		years--
-	}
-	return T(years)
-}
+// 	date := birthday.Copy() // do not modify the original date
+// 	if date.HasError() {
+// 		// cannot calculate an age with broken time instance
+// 		return T(0)
+// 	}
+//
+// 	now := carbon.Now(date.Timezone())
+// 	if !now.IsLeapYear() && date.Month() == 2 && date.Day() == 29 {
+// 		// in non-leap years, 02-29 is converted to 03-01
+// 		date = date.AddDay()
+// 	}
+//
+// 	if now.Lt(date) {
+// 		// man, are you sure your birthday is before than now?
+// 		return 0
+// 	}
+//
+// 	years := now.Year() - date.Year()
+// 	if now.Month() < date.Month() || (now.Month() == date.Month() && now.Day() < date.Day()) {
+// 		years--
+// 	}
+// 	return T(years)
+// }
 
 // endregion
 
@@ -99,47 +99,61 @@ func CalculateRealAgeFromCarbon[T AgeNumber](birthday *carbon.Carbon) (age T) {
 //
 // 计算一个出生日期到现在的虚岁。虚岁是传统中国的记岁方法，固定使用 Asia/Shanghai 时区。
 func CalculateNominalAge[T AgeNumber](birthday time.Time) (age T) {
-	carbonBirthday := carbon.CreateFromStdTime(birthday, carbon.Shanghai)
-	return CalculateNominalAgeFromCarbon[T](carbonBirthday)
-}
+	loc, _ := time.LoadLocation(AsiaShanghai)
 
-// CalculateNominalAgeFromCarbon returns the Xusui (known as nominal age) from
-// some birthday to now.
-//
-// Xusui, the nominal age system, a traditional Chinese age reckoning
-// method, is consistently calculated using the Asia/Shanghai time zone
-// standard.
-//
-// 计算一个出生日期到现在的虚岁。虚岁是传统中国的记岁方法，固定使用 Asia/Shanghai 时区。
-func CalculateNominalAgeFromCarbon[T AgeNumber](birthday *carbon.Carbon) (age T) {
-	timezone := carbon.Shanghai
+	birthday = birthday.In(loc)
+	lunarNewYearInBirthYear := lunar.FromLunar(birthday.Year(), 1, 1, false).ToGregorian(AsiaShanghai)
 
-	birthday = birthday.SetTimezone(timezone)
-	lunarNewYearInBirthYear := lunarNewYearInThatYear(birthday)
-
-	now := carbon.Now(timezone)
-	lunarNewYear := lunarNewYearInThatYear(now)
+	now := time.Now().In(loc)
+	lunarNewYear := lunar.FromLunar(now.Year(), 1, 1, false).ToGregorian(AsiaShanghai)
 
 	years := now.Year() - birthday.Year()
-	if birthday.Lt(lunarNewYearInBirthYear) {
+	if birthday.Before(lunarNewYearInBirthYear.Time) {
 		years++
 	}
-	if now.Gte(lunarNewYear) {
+	if now.After(lunarNewYear.Time) {
 		years++
 	}
 	return T(years)
 }
 
-func lunarNewYearInThatYear(date *carbon.Carbon) (lunarNewYear *carbon.Carbon) {
-	timezone := carbon.Shanghai
-
-	copied := date.Copy()
-	copied = copied.SetTimezone(timezone)
-
-	lunarNewYear = carbon.CreateFromLunar(copied.Year(), 1, 1, 0, 0, 0, copied.IsLeapYear())
-	lunarNewYear = lunarNewYear.SetTimezone(timezone)
-
-	return
-}
+// // CalculateNominalAgeFromCarbon returns the Xusui (known as nominal age) from
+// // some birthday to now.
+// //
+// // Xusui, the nominal age system, a traditional Chinese age reckoning
+// // method, is consistently calculated using the Asia/Shanghai time zone
+// // standard.
+// //
+// // 计算一个出生日期到现在的虚岁。虚岁是传统中国的记岁方法，固定使用 Asia/Shanghai 时区。
+// func CalculateNominalAgeFromCarbon[T AgeNumber](birthday *carbon.Carbon) (age T) {
+// 	timezone := carbon.Shanghai
+//
+// 	birthday = birthday.SetTimezone(timezone)
+// 	lunarNewYearInBirthYear := lunarNewYearInThatYear(birthday)
+//
+// 	now := carbon.Now(timezone)
+// 	lunarNewYear := lunarNewYearInThatYear(now)
+//
+// 	years := now.Year() - birthday.Year()
+// 	if birthday.Lt(lunarNewYearInBirthYear) {
+// 		years++
+// 	}
+// 	if now.Gte(lunarNewYear) {
+// 		years++
+// 	}
+// 	return T(years)
+// }
+//
+// func lunarNewYearInThatYear(date *carbon.Carbon) (lunarNewYear *carbon.Carbon) {
+// 	timezone := carbon.Shanghai
+//
+// 	copied := date.Copy()
+// 	copied = copied.SetTimezone(timezone)
+//
+// 	lunarNewYear = carbon.CreateFromLunar(copied.Year(), 1, 1, 0, 0, 0, false)
+// 	lunarNewYear = lunarNewYear.SetTimezone(timezone)
+//
+// 	return
+// }
 
 // endregion

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dromara/carbon/v2"
+	"github.com/AyakuraYuki/go-aybox/time/calendar/lunar"
 )
 
 const testCreatedAtYear = 2025
@@ -39,7 +39,7 @@ var (
 		"1995-03-14": 31,
 		"1995-11-05": 31,
 		"1996-01-19": 31,
-		"1996-02-29": 31,
+		"1996-02-29": 30,
 		"1996-12-26": 30,
 	}
 )
@@ -47,14 +47,6 @@ var (
 func testDateStringParseToTime(date string) time.Time {
 	d, _ := time.Parse(time.DateOnly, date)
 	return d
-}
-
-func testDateStringParseToCarbon(date string) *carbon.Carbon {
-	c := carbon.ParseByLayout(date, time.DateOnly)
-	if c.HasError() {
-		return nil
-	}
-	return c
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -111,8 +103,9 @@ func TestCalculateNominalAge(t *testing.T) {
 	}
 
 	// adjust want
-	now := carbon.Now(carbon.Shanghai)
-	if lunarNewYear := lunarNewYearInThatYear(now); now.Gte(lunarNewYear) {
+	loc, _ := time.LoadLocation(AsiaShanghai)
+	now := time.Now().In(loc)
+	if lunarNewYear := lunar.FromStdTime(now); now.After(lunarNewYear.ToGregorian(AsiaShanghai).Time) {
 		for i := range tests {
 			tests[i].want += testGetDeltaYears()
 		}
@@ -126,32 +119,3 @@ func TestCalculateNominalAge(t *testing.T) {
 		})
 	}
 }
-
-func TestCalculateNominalAgeFromCarbon(t *testing.T) {
-	type testCase struct {
-		birthday *carbon.Carbon
-		want     int
-	}
-	var tests []testCase
-	for _, date := range slices.Sorted(maps.Keys(testBirthdayNominalAgeMapping)) {
-		tests = append(tests, testCase{carbon.ParseByLayout(date, time.DateOnly), testBirthdayNominalAgeMapping[date]})
-	}
-
-	// adjust want
-	now := carbon.Now(carbon.Shanghai)
-	if lunarNewYear := lunarNewYearInThatYear(now); now.Gte(lunarNewYear) {
-		for i := range tests {
-			tests[i].want += testGetDeltaYears()
-		}
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.birthday.Format("Y-m-d"), func(t *testing.T) {
-			if get := CalculateNominalAgeFromCarbon[int](tt.birthday); get != tt.want {
-				t.Errorf("unexpected nominal age, want %v, but got %v", tt.want, get)
-			}
-		})
-	}
-}
-
-// ----------------------------------------------------------------------------------------------------
