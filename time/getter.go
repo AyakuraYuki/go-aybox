@@ -60,14 +60,14 @@ func DateTime(t time.Time) (year int, month time.Month, day, hour, minute, secon
 func DateTimeMilli(t time.Time) (year int, month time.Month, day, hour, minute, second, millisecond int) {
 	year, month, day = t.Date()
 	hour, minute, second = t.Clock()
-	millisecond = t.Nanosecond() / 1e6
+	millisecond = Millisecond(t)
 	return
 }
 
 func DateTimeMicro(t time.Time) (year int, month time.Month, day, hour, minute, second, microsecond int) {
 	year, month, day = t.Date()
 	hour, minute, second = t.Clock()
-	microsecond = t.Nanosecond() / 1e3
+	microsecond = Microsecond(t)
 	return
 }
 
@@ -97,19 +97,12 @@ func Time(t time.Time) (hour, minute, second int) {
 	return t.Clock()
 }
 
-func TimeMilli(t time.Time) (hour, minute, second, millisecond int) {
-	_, _, _, hour, minute, second, millisecond = DateTimeMilli(t)
-	return
+func Millisecond(t time.Time) (millisecond int) {
+	return t.Nanosecond() / 1e6
 }
 
-func TimeMicro(t time.Time) (hour, minute, second, microsecond int) {
-	_, _, _, hour, minute, second, microsecond = DateTimeMicro(t)
-	return
-}
-
-func TimeNano(t time.Time) (hour, minute, second, nanosecond int) {
-	_, _, _, hour, minute, second, nanosecond = DateTimeNano(t)
-	return
+func Microsecond(t time.Time) (microsecond int) {
+	return t.Nanosecond() / 1e3
 }
 
 func Century(t time.Time) int {
