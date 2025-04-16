@@ -21,9 +21,5 @@ func TestStacktrace(t *testing.T) {
 
 	fmt.Println(st.String(""))
 	fmt.Println()
-	src, lines := st.Source()
-	fmt.Println(src)
-	for _, line := range lines {
-		fmt.Println(line)
-	}
+	fmt.Println(st.Sources())
 }

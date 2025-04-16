@@ -83,6 +83,18 @@ func (st *Stacktrace) Source() (string, []string) {
 	return header, body
 }
 
+func (st *Stacktrace) Sources() string {
+	header, body := st.Source()
+	if header == "" {
+		header = "Thrown:"
+	}
+	str := ""
+	str += header
+	str += "\n"
+	str += strings.Join(body, "\n")
+	return str
+}
+
 func NewStacktrace(span ...string) *Stacktrace {
 	sp := "stack"
 	if len(span) > 0 && strings.TrimSpace(span[0]) != "" {
