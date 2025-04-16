@@ -11,7 +11,6 @@ Inspired by palantir/Stacktrace repo
 package stack
 
 import (
-	"fmt"
 	"reflect"
 	"runtime"
 	"strings"
@@ -25,77 +24,13 @@ var (
 	packageName = reflect.TypeOf(fake{}).PkgPath()
 )
 
-type stacktraceFrame struct {
-	pc      uintptr
-	file    string
-	rawFile string
-	fn      string
-	line    int
-}
-
-func (frame *stacktraceFrame) String() string {
-	currentFrame := fmt.Sprintf("%v:%v", frame.file, frame.line)
-	if frame.fn != "" {
-		currentFrame = fmt.Sprintf("%v:%v %v()", frame.file, frame.line, frame.fn)
-	}
-	return currentFrame
-}
-
 type Stacktrace struct {
 	span   string
+	err    error
 	frames []stacktraceFrame
 }
 
-func (st *Stacktrace) Error() string {
-	return st.String("")
-}
-
-func (st *Stacktrace) String(deepestFrame string) string {
-	var str string
-
-	newline := func() {
-		if str != "" && !strings.HasSuffix(str, "\n") {
-			str += "\n"
-		}
-	}
-
-	for _, frame := range st.frames {
-		if frame.file != "" {
-			currentFrame := frame.String()
-			if currentFrame == deepestFrame {
-				break
-			}
-			newline()
-			str += "  --- at " + currentFrame
-		}
-	}
-
-	return str
-}
-
-func (st *Stacktrace) Source() (string, []string) {
-	if len(st.frames) == 0 {
-		return "", make([]string, 0)
-	}
-	firstFrame := st.frames[0]
-	header := firstFrame.String()
-	body := getSourceFromFrame(firstFrame)
-	return header, body
-}
-
-func (st *Stacktrace) Sources() string {
-	header, body := st.Source()
-	if header == "" {
-		header = "Thrown:"
-	}
-	str := ""
-	str += header
-	str += "\n"
-	str += strings.Join(body, "\n")
-	return str
-}
-
-func NewStacktrace(span ...string) *Stacktrace {
+func NewStacktrace(err error, span ...string) *Stacktrace {
 	sp := "stack"
 	if len(span) > 0 && strings.TrimSpace(span[0]) != "" {
 		sp = strings.TrimSpace(span[0])
@@ -139,24 +74,61 @@ func NewStacktrace(span ...string) *Stacktrace {
 
 	return &Stacktrace{
 		span:   sp,
+		err:    err,
 		frames: frames,
 	}
 }
 
-func shortFuncName(f *runtime.Func) string {
-	// f.Name() is like one of these:
-	// - "github.com/example/proj/package.FuncName"
-	// - "github.com/example/proj/package.Receiver.MethodName"
-	// - "github.com/example/proj/package.(*PtrReceiver).MethodName"
-	longName := f.Name()
+func (st *Stacktrace) Error() string {
+	return st.String("")
+}
 
-	withoutPath := longName[strings.LastIndex(longName, "/")+1:]
-	withoutPackage := withoutPath[strings.Index(withoutPath, ".")+1:]
+func (st *Stacktrace) String(deepestFrame string) string {
+	var str string
 
-	shortName := withoutPackage
-	shortName = strings.Replace(shortName, "(", "", 1)
-	shortName = strings.Replace(shortName, "*", "", 1)
-	shortName = strings.Replace(shortName, ")", "", 1)
+	newline := func() {
+		if str != "" && !strings.HasSuffix(str, "\n") {
+			str += "\n"
+		}
+	}
 
-	return shortName
+	if st.err != nil {
+		str += st.err.Error()
+		newline()
+	}
+
+	for _, frame := range st.frames {
+		if frame.file != "" {
+			currentFrame := frame.String()
+			if currentFrame == deepestFrame {
+				break
+			}
+			newline()
+			str += "  --- at " + currentFrame
+		}
+	}
+
+	return str
+}
+
+func (st *Stacktrace) Source() (string, []string) {
+	if len(st.frames) == 0 {
+		return "", make([]string, 0)
+	}
+	firstFrame := st.frames[0]
+	header := firstFrame.String()
+	body := getSourceFromFrame(firstFrame)
+	return header, body
+}
+
+func (st *Stacktrace) Sources() string {
+	header, body := st.Source()
+	if header == "" {
+		header = "Thrown:"
+	}
+	str := ""
+	str += header
+	str += "\n"
+	str += strings.Join(body, "\n")
+	return str
 }

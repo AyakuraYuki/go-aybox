@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -12,7 +13,10 @@ func b() *Stacktrace { return c() }
 func c() *Stacktrace { return d() }
 func d() *Stacktrace { return e() }
 func e() *Stacktrace { return f() }
-func f() *Stacktrace { return NewStacktrace("fff") }
+func f() *Stacktrace {
+	err := errors.New("test error")
+	return NewStacktrace(err, "fff")
+}
 
 func TestStacktrace(t *testing.T) {
 	st := a()
