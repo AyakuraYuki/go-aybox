@@ -2,7 +2,6 @@ package stack
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,8 +21,4 @@ func TestStacktrace(t *testing.T) {
 	st := a()
 	assert.NotNil(t, st)
 	assert.Equal(t, "fff", st.span)
-
-	fmt.Println(st.String(""))
-	fmt.Println()
-	fmt.Println(st.Sources())
 }
