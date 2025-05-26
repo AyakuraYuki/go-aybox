@@ -17,6 +17,11 @@ const (
 	testExpectedAes256CBCBase64 = "Ac76EhWrN0mWrjzqla4jyg=="
 )
 
+func testAesIV() []byte     { return []byte("5678567856785678") }
+func testAes128Key() []byte { return []byte("1234567812345678") }
+func testAes192Key() []byte { return []byte("123456781234567812345678") }
+func testAes256Key() []byte { return []byte("12345678123456781234567812345678") }
+
 func TestAesECBEncrypt(t *testing.T) {
 	// AES128/ECB/PKCS7
 	dst, err := AesECBEncrypt(testSrc(), testAes128Key(), PaddingPKCS7)

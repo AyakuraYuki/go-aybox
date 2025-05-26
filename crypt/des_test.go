@@ -12,6 +12,9 @@ const (
 	testExpectedDesCBCBase64 = "u103iBiyRF3etJonMNMGNQ=="
 )
 
+func testDesIV() []byte  { return []byte("56785678") }
+func testDesKey() []byte { return []byte("12341234") }
+
 func TestDesECBEncrypt(t *testing.T) {
 	dst, err := DesECBEncrypt(testSrc(), testDesKey(), PaddingPKCS7)
 	assert.NoError(t, err)

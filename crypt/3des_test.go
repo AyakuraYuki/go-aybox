@@ -12,6 +12,8 @@ const (
 	testExpected3DesCBCBase64 = "g6Im7UM3ObVsJ3HMJW/6Fw=="
 )
 
+func test3DesKey() []byte { return []byte("123456781234567812345678") }
+
 func TestTripleDesECBEncrypt(t *testing.T) {
 	dst, err := TripleDesECBEncrypt(testSrc(), test3DesKey(), PaddingPKCS7)
 	assert.NoError(t, err)
