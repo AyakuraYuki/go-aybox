@@ -5,17 +5,6 @@ import (
 	"crypto/cipher"
 )
 
-func CTRXor(block cipher.Block, src, iv []byte) ([]byte, error) {
-	blockSize := block.BlockSize()
-	dst := make([]byte, len(src))
-	if len(iv) != blockSize {
-		iv = ctrIVPadding(iv, blockSize)
-	}
-	stream := cipher.NewCTR(block, iv)
-	stream.XORKeyStream(dst, src)
-	return dst, nil
-}
-
 func CTREncrypt(block cipher.Block, src, iv []byte, padding string) ([]byte, error) {
 	blockSize := block.BlockSize()
 	src = Padding(padding, src, blockSize)
