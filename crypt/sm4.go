@@ -50,6 +50,7 @@ func SM4CBCDecrypt(src, key, iv []byte, padding string) (dst []byte, err error) 
 
 // region SM4 CTR
 
+// SM4CTREncrypt SM4 CTR encrypt
 func SM4CTREncrypt(src, key, iv []byte, padding string) (dst []byte, err error) {
 	block, err := sm4.NewCipher(key)
 	if err != nil {
@@ -58,12 +59,35 @@ func SM4CTREncrypt(src, key, iv []byte, padding string) (dst []byte, err error) 
 	return CTREncrypt(block, src, iv, padding)
 }
 
+// SM4CTRDecrypt SM4 CTR decrypt
 func SM4CTRDecrypt(src, key, iv []byte, padding string) (dst []byte, err error) {
 	block, err := sm4.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
 	return CTRDecrypt(block, src, iv, padding)
+}
+
+// endregion
+
+// region SM4 GCM
+
+// SM4GCMEncrypt SM4 GCM encrypt
+func SM4GCMEncrypt(src, key, iv, A []byte, padding string) (dst []byte, err error) {
+	block, err := sm4.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	return GCMEncrypt(block, src, iv, A, padding)
+}
+
+// SM4GCMDecrypt SM4 GCM decrypt
+func SM4GCMDecrypt(src, key, iv, A []byte, padding string) (dst []byte, err error) {
+	block, err := sm4.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	return GCMDecrypt(block, src, iv, A, padding)
 }
 
 // endregion

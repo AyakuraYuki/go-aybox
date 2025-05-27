@@ -50,3 +50,19 @@ func Test_SM4_CTR_EncryptDecrypt(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, src, dst)
 }
+
+func Test_SM4_GCM_EncryptDecrypt(t *testing.T) {
+	src := []byte("apple")
+	key := []byte("1234567812345678")
+	iv := []byte("5678567856785678")
+	A := []byte("banana")
+	want := "DRXErDIVzCFVR9AhtYr/iAVAOXr8d+RKzyRE0FO3BuY=" // base64
+
+	dst, err := SM4GCMEncrypt(src, key, iv, A, PaddingPKCS7)
+	assert.NoError(t, err)
+	assert.EqualValues(t, want, base64.StdEncoding.EncodeToString(dst))
+
+	dst, err = SM4GCMDecrypt(dst, key, iv, A, PaddingPKCS7)
+	assert.NoError(t, err)
+	assert.EqualValues(t, src, dst)
+}
