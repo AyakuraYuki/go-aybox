@@ -6,7 +6,7 @@ import (
 	"crypto/cipher"
 )
 
-// AesECBEncrypt AES-ECB Enc
+// AesECBEncrypt AES-ECB encrypt
 func AesECBEncrypt(src, key []byte, padding string) ([]byte, error) {
 	block, err := NewAesCipher(key)
 	if err != nil {
@@ -15,7 +15,7 @@ func AesECBEncrypt(src, key []byte, padding string) ([]byte, error) {
 	return ECBEncrypt(block, src, padding)
 }
 
-// AesECBDecrypt AES-ECB Dec
+// AesECBDecrypt AES-ECB decrypt
 func AesECBDecrypt(src, key []byte, padding string) ([]byte, error) {
 	block, err := NewAesCipher(key)
 	if err != nil {
@@ -24,7 +24,7 @@ func AesECBDecrypt(src, key []byte, padding string) ([]byte, error) {
 	return ECBDecrypt(block, src, padding)
 }
 
-// AesCBCEncrypt AES-CBC Enc
+// AesCBCEncrypt AES-CBC encrypt
 func AesCBCEncrypt(src, key, iv []byte, padding string) ([]byte, error) {
 	block, err := NewAesCipher(key)
 	if err != nil {
@@ -33,7 +33,7 @@ func AesCBCEncrypt(src, key, iv []byte, padding string) ([]byte, error) {
 	return CBCEncrypt(block, src, iv, padding)
 }
 
-// AesCBCDecrypt AES-CBC Dec
+// AesCBCDecrypt AES-CBC decrypt
 func AesCBCDecrypt(src, key, iv []byte, padding string) ([]byte, error) {
 	block, err := NewAesCipher(key)
 	if err != nil {

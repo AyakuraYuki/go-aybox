@@ -2,7 +2,7 @@ package crypt
 
 import "crypto/des"
 
-// TripleDesECBEncrypt 3DES-ECB Enc
+// TripleDesECBEncrypt 3DES-ECB encrypt
 func TripleDesECBEncrypt(src, key []byte, padding string) ([]byte, error) {
 	block, err := des.NewTripleDESCipher(key)
 	if err != nil {
@@ -11,7 +11,7 @@ func TripleDesECBEncrypt(src, key []byte, padding string) ([]byte, error) {
 	return ECBEncrypt(block, src, padding)
 }
 
-// TripleDesECBDecrypt 3DES-ECB Dec
+// TripleDesECBDecrypt 3DES-ECB decrypt
 func TripleDesECBDecrypt(src, key []byte, padding string) ([]byte, error) {
 	block, err := des.NewTripleDESCipher(key)
 	if err != nil {
@@ -20,7 +20,7 @@ func TripleDesECBDecrypt(src, key []byte, padding string) ([]byte, error) {
 	return ECBDecrypt(block, src, padding)
 }
 
-// TripleDesCBCEncrypt 3DES-CBC Enc
+// TripleDesCBCEncrypt 3DES-CBC encrypt
 func TripleDesCBCEncrypt(src, key, iv []byte, padding string) ([]byte, error) {
 	block, err := des.NewTripleDESCipher(key)
 	if err != nil {
@@ -29,7 +29,7 @@ func TripleDesCBCEncrypt(src, key, iv []byte, padding string) ([]byte, error) {
 	return CBCEncrypt(block, src, iv, padding)
 }
 
-// TripleDesCBCDecrypt 3DES-CBC Dec
+// TripleDesCBCDecrypt 3DES-CBC decrypt
 func TripleDesCBCDecrypt(src, key, iv []byte, padding string) ([]byte, error) {
 	block, err := des.NewTripleDESCipher(key)
 	if err != nil {

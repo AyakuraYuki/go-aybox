@@ -23,7 +23,7 @@ func RSAGenerateKey(bits int) (priKey []byte, err error) {
 	return pem.EncodeToMemory(&block), nil
 }
 
-// RSAGeneratePublicKey generates RSA public key, returns bytes
+// RSAGeneratePublicKey generates RSA public keys, returns bytes
 func RSAGeneratePublicKey(priKey []byte) (pubKey []byte, err error) {
 	block, _ := pem.Decode(priKey)
 	if block == nil {

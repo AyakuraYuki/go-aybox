@@ -2,7 +2,6 @@ package crypt
 
 import (
 	"crypto"
-	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,11 +10,11 @@ import (
 func TestRSAEncryptDecrypt(t *testing.T) {
 	priKey, err := RSAGenerateKey(2048)
 	assert.NoError(t, err)
-	t.Logf("private key: %s", priKey)
+	// t.Logf("private key: %s", priKey)
 
 	pubKey, err := RSAGeneratePublicKey(priKey)
 	assert.NoError(t, err)
-	t.Logf("public key: %s", pubKey)
+	// t.Logf("public key: %s", pubKey)
 
 	src := []byte("apple")
 	dst, err := RSAEncrypt(src, pubKey)
@@ -30,16 +29,16 @@ func TestRSAEncryptDecrypt(t *testing.T) {
 func TestRSASignVerify(t *testing.T) {
 	priKey, err := RSAGenerateKey(2048)
 	assert.NoError(t, err)
-	t.Logf("private key: %s", priKey)
+	// t.Logf("private key: %s", priKey)
 
 	pubKey, err := RSAGeneratePublicKey(priKey)
 	assert.NoError(t, err)
-	t.Logf("public key: %s", pubKey)
+	// t.Logf("public key: %s", pubKey)
 
 	src := []byte("apple")
 	dst, err := RSASign(src, priKey, crypto.SHA512)
 	assert.NoError(t, err)
-	t.Logf("signature: %s", hex.EncodeToString(dst))
+	// t.Logf("signature: %s", hex.EncodeToString(dst))
 
 	err = RSAVerify(src, dst, pubKey, crypto.SHA512)
 	assert.NoError(t, err)

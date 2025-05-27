@@ -6,7 +6,7 @@ import (
 	"crypto/des"
 )
 
-// DesECBEncrypt DES-ECB Enc
+// DesECBEncrypt DES-ECB encrypt
 func DesECBEncrypt(src, key []byte, padding string) ([]byte, error) {
 	block, err := NewDesCipher(key)
 	if err != nil {
@@ -15,7 +15,7 @@ func DesECBEncrypt(src, key []byte, padding string) ([]byte, error) {
 	return ECBEncrypt(block, src, padding)
 }
 
-// DesECBDecrypt DES-ECB Dec
+// DesECBDecrypt DES-ECB decrypt
 func DesECBDecrypt(src, key []byte, padding string) ([]byte, error) {
 	block, err := NewDesCipher(key)
 	if err != nil {
@@ -24,7 +24,7 @@ func DesECBDecrypt(src, key []byte, padding string) ([]byte, error) {
 	return ECBDecrypt(block, src, padding)
 }
 
-// DesCBCEncrypt DES-CBC Enc
+// DesCBCEncrypt DES-CBC encrypt
 func DesCBCEncrypt(src, key, iv []byte, padding string) ([]byte, error) {
 	block, err := NewDesCipher(key)
 	if err != nil {
@@ -33,7 +33,7 @@ func DesCBCEncrypt(src, key, iv []byte, padding string) ([]byte, error) {
 	return CBCEncrypt(block, src, iv, padding)
 }
 
-// DesCBCDecrypt DES-CBC Dec
+// DesCBCDecrypt DES-CBC decrypt
 func DesCBCDecrypt(src, key, iv []byte, padding string) ([]byte, error) {
 	block, err := NewDesCipher(key)
 	if err != nil {
