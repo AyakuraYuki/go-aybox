@@ -3,7 +3,7 @@ module github.com/AyakuraYuki/go-aybox
 go 1.24
 
 require (
-	github.com/emmansun/gmsm v0.30.1
+	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/stretchr/testify v1.10.0
 )
 
