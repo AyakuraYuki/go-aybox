@@ -13,10 +13,9 @@ const (
 )
 
 const (
-	lower  = "abcdefghijklmnopqrstuvwxyz"
-	upper  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	digit  = "0123456789"
-	symbol = "!#$%&()*+,-./:;<=>?@[]^_{|}~\\\"'"
+	lower = "abcdefghijklmnopqrstuvwxyz"
+	upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	digit = "0123456789"
 )
 
 func RandString(size, set int) string {
@@ -34,31 +33,6 @@ func RandString(size, set int) string {
 	buf := make([]byte, size)
 	for i := 0; i < size; i++ {
 		buf[i] = letters[rand.Intn(letterSize)]
-	}
-	return string(buf)
-}
-
-func RandPassword(size int) string {
-	letters := ""
-	letters += lower
-	letters += upper
-	letters += digit
-	letters += symbol
-	letterSize := len(letters)
-	buf := make([]byte, size)
-	for i := 0; i < size; i++ {
-		switch i {
-		case 0:
-			buf[i] = upper[rand.Intn(len(upper))] // first should be upper
-		case 1:
-			buf[i] = lower[rand.Intn(len(lower))] // second should be lower
-		case 2:
-			buf[i] = symbol[rand.Intn(len(symbol))] // third should be a symbol
-		case 3:
-			buf[i] = digit[rand.Intn(len(digit))] // forth should be a digit
-		default:
-			buf[i] = letters[rand.Intn(letterSize)]
-		}
 	}
 	return string(buf)
 }
