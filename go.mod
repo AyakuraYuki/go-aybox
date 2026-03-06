@@ -12,6 +12,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
+	golang.org/x/term v0.40.0
 	gorm.io/gorm v1.31.1
 )
 
