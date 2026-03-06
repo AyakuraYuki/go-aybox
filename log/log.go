@@ -17,12 +17,6 @@ import (
 	"github.com/AyakuraYuki/go-aybox/log/console"
 )
 
-func init() {
-	zerolog.MessageFieldName = "desc"
-	zerolog.TimestampFieldName = "timestamp"
-	zerolog.TimeFieldFormat = ""
-}
-
 // CloseFn is a function that closes a resource.
 type CloseFn func() error
 
@@ -32,11 +26,15 @@ type Leveler interface {
 }
 
 // Logger is a multi-instance logger backed by zerolog.
-// Create one with New(); safe to call methods from multiple goroutines.
+// Logging methods (Debug, Info, Warn, Error) are safe to call concurrently.
+// With and Accept are intended for setup time; Accept is mutex-protected to
+// serialize concurrent writes to the underlying logger.
+// Create one with New().
 type Logger struct {
 	zlogger  zerolog.Logger
-	depth    int  // base call-stack depth for codeline; default 2
-	codeline bool // emit file:line and func fields; default false
+	mu       sync.RWMutex // guards writes to zlogger via Accept
+	depth    int          // base call-stack depth for codeline; default 2
+	codeline bool         // emit file:line and func fields; default false
 	closeFns []CloseFn
 }
 
@@ -69,7 +67,8 @@ func New(opts ...Option) *Logger {
 				diodes.NewManyToOne(1024, diodes.AlertFunc(func(missed int) {
 					fmt.Printf("logger dropped %d messages\n", missed)
 				})),
-				time.Second)
+				time.Second,
+				cfg.asyncCloseTimeout)
 			wrapped[i] = aw
 			// async.Writer.Close flushes the diode and then closes the
 			// underlying writer if it implements io.Closer, so we only need
@@ -126,19 +125,18 @@ func (l *Logger) Close() {
 }
 
 // With exposes the underlying zerolog.Context for direct field configuration.
-// It must only be called during logger setup, before the logger is shared
-// across goroutines. Commit the changes back with Accept.
+// Intended for setup time before the logger is shared across goroutines.
+// Commit changes back with Accept.
 func (l *Logger) With() zerolog.Context {
 	return l.zlogger.With()
 }
 
-// Accept applies a configured zerolog.Context to this logger, replacing the
-// underlying zerolog.Logger.
-//
-// WARNING: Accept is not goroutine-safe. It must only be called during logger
-// initialization, before the logger is passed to any goroutine. Calling Accept
-// concurrently with any logging method (Debug, Info, …) causes a data race.
+// Accept applies a configured zerolog.Context to this logger.
+// A write lock is held for the duration to serialise concurrent Accept calls.
+// Intended for setup time; do not interleave Accept with active logging.
 func (l *Logger) Accept(ctx zerolog.Context) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.zlogger = ctx.Logger()
 }
 

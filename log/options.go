@@ -2,19 +2,21 @@ package log
 
 import (
 	"io"
+	"time"
 
 	"github.com/rs/zerolog"
 )
 
 // config holds the builder state used by New.
 type config struct {
-	level    zerolog.Level
-	depth    int
-	async    bool
-	codeline bool
-	writers  []io.Writer
-	fields   map[string]string
-	hostname string
+	level             zerolog.Level
+	depth             int
+	async             bool
+	asyncCloseTimeout time.Duration
+	codeline          bool
+	writers           []io.Writer
+	fields            map[string]string
+	hostname          string
 }
 
 // Option configures a Logger at construction time.
@@ -43,6 +45,16 @@ func WithDepth(depth int) Option {
 func WithAsync() Option {
 	return func(c *config) {
 		c.async = true
+	}
+}
+
+// WithAsyncCloseTimeout sets the maximum time Logger.Close will wait for the
+// async background goroutine to drain buffered entries before giving up.
+// A zero or negative value means wait indefinitely (the default).
+// Only effective when combined with WithAsync.
+func WithAsyncCloseTimeout(d time.Duration) Option {
+	return func(c *config) {
+		c.asyncCloseTimeout = d
 	}
 }
 

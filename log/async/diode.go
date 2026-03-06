@@ -16,25 +16,22 @@ var diodeBufPool = bytesPool.NewPool()
 // Writer is a io.Writer wrapper that uses a diode to make Write lock-free,
 // non-blocking and thread safe.
 type Writer struct {
-	l    zerolog.Level
-	w    io.Writer
-	d    *diodes.ManyToOne
-	p    *diodes.Poller
-	c    context.CancelFunc
-	done chan struct{}
+	l            zerolog.Level
+	w            io.Writer
+	d            *diodes.ManyToOne
+	p            *diodes.Poller
+	c            context.CancelFunc
+	done         chan struct{}
+	closeTimeout time.Duration
 }
 
 // New creates a writer wrapping w with a many-to-one diode in order
 // to never block log producers and drop events if the writer can't keep up
 // with the flow of data.
 //
-// Use a diode.Writer when
-//
-//	d := diodes.NewManyToOne(1000, diodes.AlertFunc(func(missed int) {
-//	    log.Printf("Dropped %d messages", missed)
-//	}))
-//	w := diode.NewWriter(w, d, 10 * time.Millisecond)
-//	log := zerolog.New(w)
+// closeTimeout overrides the default drain timeout used by Close. When set to
+// a positive value it replaces the 30-second default; zero or negative leaves
+// the default in effect.
 //
 // See code.cloudfoundry.org/go-diodes for more info on diode.
 func New(
@@ -42,6 +39,7 @@ func New(
 	w io.Writer,
 	manyToOneDiode *diodes.ManyToOne,
 	poolInterval time.Duration,
+	closeTimeout time.Duration,
 ) Writer {
 	ctx, cancel := context.WithCancel(context.Background())
 	dw := Writer{
@@ -51,8 +49,9 @@ func New(
 		p: diodes.NewPoller(manyToOneDiode,
 			diodes.WithPollingInterval(poolInterval),
 			diodes.WithPollingContext(ctx)),
-		c:    cancel,
-		done: make(chan struct{}),
+		c:            cancel,
+		done:         make(chan struct{}),
+		closeTimeout: closeTimeout,
 	}
 	go dw.poll()
 	return dw
@@ -74,11 +73,21 @@ func (dw Writer) WriteLevel(level zerolog.Level, p []byte) (n int, err error) {
 	return dw.Write(p)
 }
 
-// Close releases the diode poller and calls Close on the wrapped writer if
-// io.Closer is implemented.
+// Close signals the background poll goroutine to stop and waits for it to
+// drain any buffered entries. The wait is bounded by closeTimeout when it is
+// positive, or by the 30-second default otherwise; if the goroutine has not
+// exited by then, Close returns early and any remaining buffered entries are
+// lost. The underlying writer is closed afterwards if it implements io.Closer.
 func (dw Writer) Close() error {
 	dw.c()
-	<-dw.done
+	closeTimeout := 30 * time.Second
+	if dw.closeTimeout > 0 {
+		closeTimeout = dw.closeTimeout
+	}
+	select {
+	case <-dw.done:
+	case <-time.After(closeTimeout):
+	}
 	if w, ok := dw.w.(io.Closer); ok {
 		return w.Close()
 	}

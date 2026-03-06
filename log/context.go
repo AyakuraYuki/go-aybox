@@ -32,28 +32,48 @@ type Context struct {
 type contextKey struct{}
 
 // Debug returns a *Log at debug level.
+// Returns nil when c is nil, mirroring the nil *Log fast-path.
 func (c *Context) Debug(name ...string) *Log {
+	if c == nil {
+		return nil
+	}
 	return c.newLog(zerolog.DebugLevel, name...)
 }
 
 // Info returns a *Log at info level.
+// Returns nil when c is nil, mirroring the nil *Log fast-path.
 func (c *Context) Info(name ...string) *Log {
+	if c == nil {
+		return nil
+	}
 	return c.newLog(zerolog.InfoLevel, name...)
 }
 
 // Warn returns a *Log at warn level.
+// Returns nil when c is nil, mirroring the nil *Log fast-path.
 func (c *Context) Warn(name ...string) *Log {
+	if c == nil {
+		return nil
+	}
 	return c.newLog(zerolog.WarnLevel, name...)
 }
 
 // Error returns a *Log at error level.
+// Returns nil when c is nil, mirroring the nil *Log fast-path.
 func (c *Context) Error(name ...string) *Log {
+	if c == nil {
+		return nil
+	}
 	return c.newLog(zerolog.ErrorLevel, name...)
 }
 
 // KV returns a new Context with an additional string field shared across all
-// log entries created from it. This is setup-time and not in the hot path.
+// log entries created from it. Returns nil when c is nil.
+// This is setup-time and not in the hot path.
 func (c *Context) KV(key, val string) *Context {
+	if c == nil {
+		return nil
+	}
 	base := c.baseLogger()
 	zl := base.With().Str(key, val).Logger()
 	nc := *c
@@ -61,13 +81,20 @@ func (c *Context) KV(key, val string) *Context {
 	return &nc
 }
 
-// ToContext stores this LogContext in the provided Go context.
+// ToContext stores this Context in the provided Go context.
 // Retrieve it later with (*Logger).FromContext.
+// Returns parent unchanged when c is nil.
 func (c *Context) ToContext(parent context.Context) context.Context {
+	if c == nil {
+		return parent
+	}
 	return context.WithValue(parent, contextKey{}, c)
 }
 
 func (c *Context) newLog(level zerolog.Level, name ...string) *Log {
+	if c == nil {
+		return nil
+	}
 	zl := *c.baseLogger()
 	if c.sampler != nil {
 		zl = zl.Sample(c.sampler)
