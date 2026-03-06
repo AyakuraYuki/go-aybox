@@ -88,15 +88,17 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 		lvlColor = cReset
 	)
 	if l, ok := event[zerolog.LevelFieldName].(string); ok {
-		level = l
+		level = fmt.Sprintf("%-5s", l)
 		lvlColor = colorizeLevel(l, w.noColor)
 	}
 	if _, ok := event[zerolog.TimestampFieldName]; ok {
-		event[zerolog.TimestampFieldName] = time.Now().Format("2006-01-02 15:04:05.999999")
+		event[zerolog.TimestampFieldName] = time.Now().Format("2006-01-02 15:04:05.000000")
 	}
-	_, _ = fmt.Fprintf(buf, "%s | %-5s | %s |",
-		colorize(event[zerolog.TimestampFieldName], cDarkGray, w.noColor),
-		colorize(level, lvlColor, w.noColor),
+	timestampString := colorize(event[zerolog.TimestampFieldName], cDarkGray, w.noColor)
+	levelString := colorize(level, lvlColor, w.noColor)
+	_, _ = fmt.Fprintf(buf, "%-*s | %-*s | %s |",
+		len(timestampString), timestampString,
+		len(levelString), levelString,
 		colorize(event[zerolog.MessageFieldName], cReset, w.noColor))
 
 	fields := make([]string, 0)

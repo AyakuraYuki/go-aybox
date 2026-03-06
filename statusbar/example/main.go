@@ -16,7 +16,11 @@ func main() {
 
 	// Route all log output through bar.Writer() so that log lines and the
 	// status bar rendering share the same mutex and never interleave.
-	logger := log.New(log.WithWriters(console.New(console.WithWriter(bar.Writer()))))
+	logger := log.New(
+		log.WithWriters(console.New(
+			console.WithWriter(bar.Writer())),
+		),
+		log.WithCodeline())
 
 	bar.SetTask("LoadConfig")
 	simulateLogs(logger, "config", 8)
@@ -47,7 +51,7 @@ func simulateLogs(logger *log.Logger, prefix string, count int) {
 		logger.Warn,
 	}
 	for i := 1; i <= count; i++ {
-		levels[rand.Intn(len(levels))](prefix).Bool("ok", true).Msgf("processing step %d/%d", i, count)
+		levels[rand.Intn(len(levels))](prefix).Msgf("processing step %d/%d", i, count)
 		time.Sleep(time.Duration(200+rand.Intn(400)) * time.Millisecond)
 	}
 }
