@@ -81,7 +81,10 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	}
 
 	buf := bufPool.Get().(*bytes.Buffer)
-	defer bufPool.Put(buf)
+	defer func() {
+		buf.Reset()
+		bufPool.Put(buf)
+	}()
 
 	var (
 		level    = "?????"

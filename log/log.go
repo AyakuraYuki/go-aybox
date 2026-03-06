@@ -352,6 +352,17 @@ func (b *Log) Dur(key string, val time.Duration) *Log {
 	return b
 }
 
+// Array adds the field key with an array to the event context.
+// Use zerolog.Arr() to create the array or pass a type that
+// implement the LogArrayMarshaler interface.
+func (b *Log) Array(key string, arr zerolog.LogArrayMarshaler) *Log {
+	if b == nil {
+		return nil
+	}
+	b.event = b.event.Array(key, arr)
+	return b
+}
+
 // Event returns the underlying *zerolog.Event for direct zerolog API access.
 // Calling .Msg() on the returned event bypasses TraceID, codeline, and stack
 // trace. Prefer Log.Msg or Log.Msgf to emit with full instrumentation.

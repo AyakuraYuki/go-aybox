@@ -33,7 +33,7 @@ func TakeStacktrace(skipOpt ...int) string {
 	defer buf.Free()
 
 	pc := stacktracePool.Get().(*programCounters)
-	defer stacktracePool.Put(pc)
+	defer func() { stacktracePool.Put(pc) }()
 
 	var numFrames int
 	for {
