@@ -35,7 +35,7 @@ const (
 
 var consoleBufPool = sync.Pool{
 	New: func() any {
-		return bytes.NewBuffer(make([]byte, 0, 100))
+		return bytes.NewBuffer(make([]byte, 0))
 	},
 }
 

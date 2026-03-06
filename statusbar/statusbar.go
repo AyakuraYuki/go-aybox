@@ -2,6 +2,7 @@ package statusbar
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -28,6 +29,7 @@ type StatusBar struct {
 	style      Style
 	termHeight int
 	termWidth  int
+	out        io.Writer
 }
 
 // Style 定义状态栏的视觉样式
@@ -67,17 +69,6 @@ func MinimalStyle() Style {
 	}
 }
 
-// New 创建一个新的 StatusBar 实例
-func New() *StatusBar {
-	return &StatusBar{
-		startTime: time.Now(),
-		stopCh:    make(chan struct{}),
-		doneCh:    make(chan struct{}),
-		refreshMs: 200,
-		style:     DefaultStyle(),
-	}
-}
-
 // Option 是 StatusBar 的配置函数类型
 type Option func(*StatusBar)
 
@@ -97,13 +88,28 @@ func WithStyle(s Style) Option {
 	}
 }
 
-// NewWithOptions 创建带有自定义选项的 StatusBar
-func NewWithOptions(opts ...Option) *StatusBar {
-	sb := New()
-	for _, opt := range opts {
-		opt(sb)
+func WithWriter(w io.Writer) Option {
+	return func(sb *StatusBar) {
+		if w != nil {
+			sb.out = w
+		}
 	}
-	return sb
+}
+
+// New 创建一个新的 StatusBar 实例
+func New(opts ...Option) *StatusBar {
+	bar := &StatusBar{
+		startTime: time.Now(),
+		stopCh:    make(chan struct{}),
+		doneCh:    make(chan struct{}),
+		refreshMs: 200,
+		style:     DefaultStyle(),
+		out:       os.Stdout,
+	}
+	for _, opt := range opts {
+		opt(bar)
+	}
+	return bar
 }
 
 // SetTask 注册当前执行的方法/任务名称（线程安全）
@@ -134,7 +140,7 @@ func (sb *StatusBar) Start() {
 	sb.setupScrollRegion()
 
 	// 隐藏光标
-	fmt.Fprint(os.Stderr, "\033[?25l")
+	_, _ = fmt.Fprint(sb.out, "\033[?25l")
 
 	go sb.loop()
 	go sb.watchResize()
@@ -158,12 +164,12 @@ func (sb *StatusBar) Stop() {
 	// 恢复全屏滚动区域
 	sb.resetScrollRegion()
 	// 显示光标
-	_, _ = fmt.Fprint(os.Stderr, "\033[?25h")
+	_, _ = fmt.Fprint(sb.out, "\033[?25h")
 }
 
 // updateTermSize 获取并缓存终端尺寸
 func (sb *StatusBar) updateTermSize() {
-	w, h, err := term.GetSize(int(os.Stderr.Fd()))
+	w, h, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil || w <= 0 || h <= 0 {
 		w, h = 80, 24
 	}
@@ -199,7 +205,7 @@ func (sb *StatusBar) setupScrollRegion() {
 	// 将光标移回滚动区域内（底部）
 	out += fmt.Sprintf("\033[%d;1H", scrollEnd)
 
-	_, _ = fmt.Fprint(os.Stderr, out)
+	_, _ = fmt.Fprint(sb.out, out)
 }
 
 // resetScrollRegion 恢复终端为全屏滚动
@@ -209,9 +215,9 @@ func (sb *StatusBar) resetScrollRegion() {
 	sb.mu.RUnlock()
 
 	// 重置滚动区域为全屏
-	_, _ = fmt.Fprintf(os.Stderr, "\033[1;%dr", h)
+	_, _ = fmt.Fprintf(sb.out, "\033[1;%dr", h)
 	// 光标移到原状态栏上方
-	_, _ = fmt.Fprintf(os.Stderr, "\033[%d;1H", h-reservedLines)
+	_, _ = fmt.Fprintf(sb.out, "\033[%d;1H", h-reservedLines)
 }
 
 // clearStatusArea 清除底部状态栏区域
@@ -226,7 +232,7 @@ func (sb *StatusBar) clearStatusArea() {
 		out += fmt.Sprintf("\033[%d;1H\033[2K", row)
 	}
 	out += "\0338" // 恢复光标
-	_, _ = fmt.Fprint(os.Stderr, out)
+	_, _ = fmt.Fprint(sb.out, out)
 }
 
 // watchResize 监听终端窗口大小变化 (SIGWINCH)，自动调整滚动区域
@@ -297,7 +303,7 @@ func (sb *StatusBar) render() {
 	}
 
 	// 分隔线行
-	barLine := sb.style.RightCap + strings.Repeat(sb.style.BarChar, maxInt(0, w-2)) + sb.style.LeftCap
+	barLine := sb.style.RightCap + strings.Repeat(sb.style.BarChar, max(0, w-2)) + sb.style.LeftCap
 	// 状态行（填充至整行宽度）
 	statusLine := padOrTruncate(content, w)
 
@@ -314,7 +320,7 @@ func (sb *StatusBar) render() {
 	out += "\033[97;46m" + statusLine + "\033[0m"
 	out += "\0338" // 恢复光标到滚动区域内的原位置
 
-	_, _ = fmt.Fprint(os.Stderr, out)
+	_, _ = fmt.Fprint(sb.out, out)
 }
 
 func formatDuration(d time.Duration) string {
@@ -364,11 +370,4 @@ func truncateVisible(s string, maxWidth int) string {
 		n += w
 	}
 	return s
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

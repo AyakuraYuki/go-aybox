@@ -10,7 +10,7 @@ type Pool struct {
 	p *sync.Pool
 }
 
-func NewBytesPool(size ...int) Pool {
+func NewBytesPool() Pool {
 	return Pool{
 		p: &sync.Pool{
 			New: func() interface{} {
