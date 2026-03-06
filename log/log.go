@@ -34,6 +34,7 @@ type Log struct {
 	depth   int
 	level   zerolog.Level
 	stack   bool
+	err     error
 	traceId string
 	zlogger *zerolog.Logger
 	sampler zerolog.Sampler
@@ -130,6 +131,22 @@ func (b *Log) Stack() *Log {
 	return b
 }
 
+func (b *Log) Err(err error) *Log {
+	if b.level == zerolog.ErrorLevel {
+		b.err = err
+	}
+	return b
+}
+
+// Event returns zerolog.Event which contains Log details
+func (b *Log) Event() *zerolog.Event {
+	var l = *b.zlogger
+	if b.sampler != nil {
+		l = l.Sample(b.sampler)
+	}
+	return l.WithLevel(b.level)
+}
+
 // Msg output
 func (b *Log) Msg(msg ...any) {
 	b.depth++
@@ -156,21 +173,21 @@ func (b *Log) Msgf(msg string, v ...any) {
 		msg = codeline(b.depth) + msg
 	}
 
-	var l = *b.zlogger
+	if b.traceId != "" {
+		msg = fmt.Sprintf("traceId:[%s] ", b.traceId) + msg
+	}
+
 	if b.stack {
 		v = append(v, TakeStacktrace(b.depth+1))
-		// l = l.With().Str("stack", TakeStacktrace(b.depth+1)).Logger()
 	}
 
-	if b.sampler != nil {
-		l = l.Sample(b.sampler)
-	}
-	if b.traceId != "" {
-		l.WithLevel(b.level).Msgf(fmt.Sprintf("traceId:[%s] ", b.traceId)+msg, v...)
-	} else {
-		l.WithLevel(b.level).Msgf(msg, v...)
+	event := b.Event()
+
+	if b.err != nil {
+		event = event.Err(b.err)
 	}
 
+	event.Msgf(msg, v...)
 }
 
 // 实现 zk logger
