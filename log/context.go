@@ -6,7 +6,19 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type contextKey struct{}
+// Sample returns a *Context with the given sampler applied to every entry.
+func (l *Logger) Sample(sampler zerolog.Sampler) *Context {
+	return &Context{logger: l, sampler: sampler}
+}
+
+// FromContext extracts a *Context stored by (*Context).ToContext.
+// Falls back to a plain *Context backed by this logger if none is found.
+func (l *Logger) FromContext(ctx context.Context) *Context {
+	if lc, ok := ctx.Value(contextKey{}).(*Context); ok {
+		return lc
+	}
+	return &Context{logger: l}
+}
 
 // Context carries shared log state (sampler, extra fields) across multiple log
 // entries.
@@ -16,6 +28,8 @@ type Context struct {
 	zlogger *zerolog.Logger // optional override; nil means use logger.zlogger
 	sampler zerolog.Sampler
 }
+
+type contextKey struct{}
 
 // Debug returns a *Log at debug level.
 func (c *Context) Debug(name ...string) *Log {
@@ -37,12 +51,13 @@ func (c *Context) Error(name ...string) *Log {
 	return c.newLog(zerolog.ErrorLevel, name...)
 }
 
-// KV returns a new LogContext with an additional key-value field shared across
-// all log entries created from it.
+// KV returns a new Context with an additional string field shared across all
+// log entries created from it. This is setup-time and not in the hot path.
 func (c *Context) KV(key, val string) *Context {
 	base := c.baseLogger()
+	zl := base.With().Str(key, val).Logger()
 	nc := *c
-	nc.zlogger = new(base.With().Str(key, val).Logger())
+	nc.zlogger = &zl
 	return &nc
 }
 
@@ -54,15 +69,18 @@ func (c *Context) ToContext(parent context.Context) context.Context {
 
 func (c *Context) newLog(level zerolog.Level, name ...string) *Log {
 	zl := *c.baseLogger()
+	if c.sampler != nil {
+		zl = zl.Sample(c.sampler)
+	}
+	event := zl.WithLevel(level)
 	if len(name) > 0 && name[0] != "" {
-		zl = zl.With().Str("name", name[0]).Logger()
+		event = event.Str("name", name[0])
 	}
 	return &Log{
-		depth:   c.logger.depth,
-		level:   level,
-		zlogger: &zl,
-		sampler: c.sampler,
-		logger:  c.logger,
+		event:  event,
+		depth:  c.logger.depth,
+		level:  level,
+		logger: c.logger,
 	}
 }
 

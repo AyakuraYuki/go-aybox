@@ -26,37 +26,37 @@ func Configure(opts ...Option) {
 	defaultLogger = New(opts...)
 }
 
-// Close flushes and closes all writers of the global Logger.
-func Close() {
-	defaultLogger.Close()
-}
-
 // Debug returns a *Log at debug level from the global Logger.
 func Debug(name ...string) *Log {
-	return defaultLogger.newLog(defaultLogger.depth, zerolog.DebugLevel, name...)
+	return defaultLogger.Debug(name...)
 }
 
 // Info returns a *Log at info level from the global Logger.
 func Info(name ...string) *Log {
-	return defaultLogger.newLog(defaultLogger.depth, zerolog.InfoLevel, name...)
+	return defaultLogger.Info(name...)
 }
 
 // Warn returns a *Log at warn level from the global Logger.
 func Warn(name ...string) *Log {
-	return defaultLogger.newLog(defaultLogger.depth, zerolog.WarnLevel, name...)
+	return defaultLogger.Warn(name...)
 }
 
 // Error returns a *Log at error level from the global Logger.
 func Error(name ...string) *Log {
-	return defaultLogger.newLog(defaultLogger.depth, zerolog.ErrorLevel, name...)
+	return defaultLogger.Error(name...)
 }
 
-// Sample returns a *LogContext with sampling enabled from the global Logger.
+// Sample returns a *Context with sampling enabled from the global Logger.
 func Sample(sampler zerolog.Sampler) *Context {
 	return defaultLogger.Sample(sampler)
 }
 
-// FromContext extracts a *LogContext from ctx using the global Logger.
+// FromContext extracts a *Context from ctx using the global Logger.
 func FromContext(ctx context.Context) *Context {
 	return defaultLogger.FromContext(ctx)
+}
+
+// Close flushes and closes all writers of the global Logger.
+func Close() {
+	defaultLogger.Close()
 }

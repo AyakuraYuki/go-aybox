@@ -16,7 +16,7 @@ func main() {
 
 	// Route all log output through bar.Writer() so that log lines and the
 	// status bar rendering share the same mutex and never interleave.
-	logger := log.New(log.WithOutput(console.New(console.WithWriter(bar.Writer()))))
+	logger := log.New(log.WithWriters(console.New(console.WithWriter(bar.Writer()))))
 
 	bar.SetTask("LoadConfig")
 	simulateLogs(logger, "config", 8)

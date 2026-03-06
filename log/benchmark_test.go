@@ -14,7 +14,7 @@ var (
 )
 
 func BenchmarkLogEmpty(b *testing.B) {
-	logger := log.New(log.WithOutput(io.Discard))
+	logger := log.New(log.WithWriters(io.Discard))
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {

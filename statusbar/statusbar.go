@@ -47,7 +47,7 @@ type Style struct {
 // DefaultStyle 返回默认样式
 func DefaultStyle() Style {
 	return Style{
-		TimeIcon:    "🕐",
+		TimeIcon:    " 🕐",
 		ElapsedIcon: "⏱",
 		TaskIcon:    "⚡",
 		Separator:   " │ ",
@@ -375,7 +375,7 @@ func padOrTruncate(s string, width int) string {
 	if visLen >= width {
 		return truncateVisible(s, width)
 	}
-	return s + strings.Repeat(" ", width-visLen)
+	return s + strings.Repeat(" ", width-visLen+3)
 }
 
 func visibleLength(s string) int {

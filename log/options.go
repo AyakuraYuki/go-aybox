@@ -11,6 +11,7 @@ type config struct {
 	level    zerolog.Level
 	depth    int
 	async    bool
+	codeline bool
 	writers  []io.Writer
 	fields   map[string]string
 	hostname string
@@ -43,10 +44,18 @@ func WithAsync() Option {
 	}
 }
 
-// WithOutput adds one or more writers.
+// WithCodeline enables file:line ("codeline") and function name ("func") fields
+// on every log entry. Disabled by default.
+func WithCodeline() Option {
+	return func(c *config) {
+		c.codeline = true
+	}
+}
+
+// WithWriters adds one or more writers.
 // Multiple calls are additive; the first call overrides the default
 // ConsoleWriter.
-func WithOutput(w ...io.Writer) Option {
+func WithWriters(w ...io.Writer) Option {
 	return func(c *config) {
 		c.writers = append(c.writers, w...)
 	}

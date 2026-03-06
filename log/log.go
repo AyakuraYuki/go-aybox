@@ -1,7 +1,6 @@
 package log
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"runtime"
@@ -30,15 +29,16 @@ type Leveler interface {
 }
 
 // Logger is a multi-instance logger backed by zerolog.
-// Create one with New(); never share a pointer across goroutines without synchronisation.
+// Create one with New(); safe to call methods from multiple goroutines.
 type Logger struct {
 	zlogger  zerolog.Logger
-	depth    int
+	depth    int  // base call-stack depth for codeline; default 2
+	codeline bool // emit file:line and func fields; default false
 	closeFns []CloseFn
 }
 
 // New creates a Logger with the provided options.
-// If no WithOutput option is given, a ConsoleWriter is used.
+// If no WithWriters option is given, a ConsoleWriter is used.
 func New(opts ...Option) *Logger {
 	cfg := &config{
 		depth:    2,
@@ -51,7 +51,6 @@ func New(opts ...Option) *Logger {
 
 	writers := cfg.writers
 	if len(writers) == 0 {
-		// use console writer as default
 		writers = []io.Writer{console.New()}
 	}
 
@@ -74,25 +73,30 @@ func New(opts ...Option) *Logger {
 		writers = wrapped
 	}
 
-	var out io.Writer
+	var writer io.Writer
 	if len(writers) == 1 {
-		out = writers[0]
+		writer = writers[0]
 	} else {
-		out = zerolog.MultiLevelWriter(writers...)
+		writer = zerolog.MultiLevelWriter(writers...)
 	}
 
-	zl := zerolog.New(out).With().Timestamp().Str("host", cfg.hostname).Logger()
+	logger := zerolog.New(writer).With().
+		Timestamp().
+		Str("host", cfg.hostname).
+		Logger()
+
 	if len(cfg.fields) > 0 {
-		c := zl.With()
+		ctx := logger.With()
 		for k, v := range cfg.fields {
-			c = c.Str(k, v)
+			ctx = ctx.Str(k, v)
 		}
-		zl = c.Logger()
+		logger = ctx.Logger()
 	}
 
 	return &Logger{
-		zlogger:  zl,
+		zlogger:  logger,
 		depth:    cfg.depth,
+		codeline: cfg.codeline,
 		closeFns: closeFns,
 	}
 }
@@ -104,82 +108,58 @@ func (l *Logger) Close() {
 	}
 }
 
-// Log starts a new message with no level. Setting GlobalLevel to Disabled
-// will still disable events produced by this method.
+// Log starts a new message with no level.
 func (l *Logger) Log(name ...string) *Log {
-	return l.newLog(l.depth, zerolog.NoLevel, name...)
+	return l.newLog(zerolog.NoLevel, name...)
 }
 
 // Debug returns a *Log at debug level, optionally tagged with name.
 func (l *Logger) Debug(name ...string) *Log {
-	return l.newLog(l.depth, zerolog.DebugLevel, name...)
+	return l.newLog(zerolog.DebugLevel, name...)
 }
 
 // Info returns a *Log at info level, optionally tagged with name.
 func (l *Logger) Info(name ...string) *Log {
-	return l.newLog(l.depth, zerolog.InfoLevel, name...)
+	return l.newLog(zerolog.InfoLevel, name...)
 }
 
 // Warn returns a *Log at warn level, optionally tagged with name.
 func (l *Logger) Warn(name ...string) *Log {
-	return l.newLog(l.depth, zerolog.WarnLevel, name...)
+	return l.newLog(zerolog.WarnLevel, name...)
 }
 
 // Error returns a *Log at error level, optionally tagged with name.
 func (l *Logger) Error(name ...string) *Log {
-	return l.newLog(l.depth, zerolog.ErrorLevel, name...)
+	return l.newLog(zerolog.ErrorLevel, name...)
 }
 
-// Sample returns a *LogContext with the given sampler applied to every entry.
-func (l *Logger) Sample(sampler zerolog.Sampler) *Context {
-	return &Context{logger: l, sampler: sampler}
-}
-
-// FromContext extracts a *LogContext stored by (*LogContext).ToContext.
-// Falls back to a plain *LogContext backed by this logger if none is found.
-func (l *Logger) FromContext(ctx context.Context) *Context {
-	if lc, ok := ctx.Value(contextKey{}).(*Context); ok {
-		return lc
-	}
-	return &Context{logger: l}
-}
-
-func (l *Logger) newLog(depth int, level zerolog.Level, name ...string) *Log {
-	zl := l.zlogger
+func (l *Logger) newLog(level zerolog.Level, name ...string) *Log {
+	event := l.zlogger.WithLevel(level)
 	if len(name) > 0 && name[0] != "" {
-		zl = zl.With().Str("name", name[0]).Logger()
+		event = event.Str("name", name[0])
 	}
 	return &Log{
-		depth:   depth,
-		level:   level,
-		zlogger: &zl,
-		logger:  l,
+		event:  event,
+		depth:  l.depth,
+		level:  level,
+		logger: l,
 	}
 }
 
 // Log carries per-call state for a single log entry.
 // Obtain one via Logger.Debug / Logger.Info / Logger.Warn / Logger.Error.
 type Log struct {
+	event   *zerolog.Event
 	depth   int
 	level   zerolog.Level
 	stack   bool
-	err     error
 	traceId string
-	zlogger *zerolog.Logger
-	sampler zerolog.Sampler
 	logger  *Logger
 }
 
-// Context stores this Log's zerolog state into a Go context (with context.Background as parent).
-// Retrieve it later with (*Logger).FromContext.
-func (b *Log) Context() context.Context {
-	lc := &Context{logger: b.logger, zlogger: b.zlogger, sampler: b.sampler}
-	return context.WithValue(context.Background(), contextKey{}, lc)
-}
-
 // KV adds a string key-value pair to this log entry.
-func (b *Log) KV(key string, val string) *Log {
-	b.zlogger = new(b.zlogger.With().Str(key, val).Logger())
+func (b *Log) KV(key, val string) *Log {
+	b.event = b.event.Str(key, val)
 	return b
 }
 
@@ -189,7 +169,7 @@ func (b *Log) TraceID(traceId string) *Log {
 	return b
 }
 
-// Stack enables stack trace appended to the message.
+// Stack enables a stack trace field ("stack") on this log entry.
 func (b *Log) Stack() *Log {
 	b.stack = true
 	return b
@@ -198,101 +178,100 @@ func (b *Log) Stack() *Log {
 // Err attaches an error field (only effective at ErrorLevel).
 func (b *Log) Err(err error) *Log {
 	if b.level == zerolog.ErrorLevel {
-		b.err = err
+		b.event = b.event.Err(err)
 	}
 	return b
 }
 
 // Bool adds a bool key-value pair to this log entry.
 func (b *Log) Bool(key string, val bool) *Log {
-	b.zlogger = new(b.zlogger.With().Bool(key, val).Logger())
+	b.event = b.event.Bool(key, val)
 	return b
 }
 
 // Int adds an int key-value pair to this log entry.
 func (b *Log) Int(key string, val int) *Log {
-	b.zlogger = new(b.zlogger.With().Int(key, val).Logger())
+	b.event = b.event.Int(key, val)
 	return b
 }
 
 // Int32 adds an int32 key-value pair to this log entry.
 func (b *Log) Int32(key string, val int32) *Log {
-	b.zlogger = new(b.zlogger.With().Int32(key, val).Logger())
+	b.event = b.event.Int32(key, val)
 	return b
 }
 
 // Int64 adds an int64 key-value pair to this log entry.
 func (b *Log) Int64(key string, val int64) *Log {
-	b.zlogger = new(b.zlogger.With().Int64(key, val).Logger())
+	b.event = b.event.Int64(key, val)
 	return b
 }
 
 // Uint adds a uint key-value pair to this log entry.
 func (b *Log) Uint(key string, val uint) *Log {
-	b.zlogger = new(b.zlogger.With().Uint(key, val).Logger())
+	b.event = b.event.Uint(key, val)
 	return b
 }
 
 // Uint32 adds a uint32 key-value pair to this log entry.
 func (b *Log) Uint32(key string, val uint32) *Log {
-	b.zlogger = new(b.zlogger.With().Uint32(key, val).Logger())
+	b.event = b.event.Uint32(key, val)
 	return b
 }
 
 // Uint64 adds a uint64 key-value pair to this log entry.
 func (b *Log) Uint64(key string, val uint64) *Log {
-	b.zlogger = new(b.zlogger.With().Uint64(key, val).Logger())
+	b.event = b.event.Uint64(key, val)
 	return b
 }
 
 // Float32 adds a float32 key-value pair to this log entry.
 func (b *Log) Float32(key string, val float32) *Log {
-	b.zlogger = new(b.zlogger.With().Float32(key, val).Logger())
+	b.event = b.event.Float32(key, val)
 	return b
 }
 
 // Float64 adds a float64 key-value pair to this log entry.
 func (b *Log) Float64(key string, val float64) *Log {
-	b.zlogger = new(b.zlogger.With().Float64(key, val).Logger())
+	b.event = b.event.Float64(key, val)
 	return b
 }
 
 // Str adds a string key-value pair to this log entry.
 func (b *Log) Str(key, val string) *Log {
-	return b.KV(key, val)
+	b.event = b.event.Str(key, val)
+	return b
 }
 
 // Strs adds a []string key-value pair to this log entry.
 func (b *Log) Strs(key string, vals []string) *Log {
-	b.zlogger = new(b.zlogger.With().Strs(key, vals).Logger())
+	b.event = b.event.Strs(key, vals)
 	return b
 }
 
 // Interface adds an any key-value pair to this log entry.
 func (b *Log) Interface(key string, val any) *Log {
-	b.zlogger = new(b.zlogger.With().Interface(key, val).Logger())
+	b.event = b.event.Interface(key, val)
 	return b
 }
 
 // Time adds a time.Time key-value pair to this log entry.
 func (b *Log) Time(key string, val time.Time) *Log {
-	b.zlogger = new(b.zlogger.With().Time(key, val).Logger())
+	b.event = b.event.Time(key, val)
 	return b
 }
 
 // Dur adds a time.Duration key-value pair to this log entry.
 func (b *Log) Dur(key string, val time.Duration) *Log {
-	b.zlogger = new(b.zlogger.With().Dur(key, val).Logger())
+	b.event = b.event.Dur(key, val)
 	return b
 }
 
-// Event returns a *zerolog.Event for direct zerolog API access.
+// Event returns the underlying *zerolog.Event for direct zerolog API access.
+// Calling .Msg() on the returned event bypasses TraceID, codeline, and stack
+// trace. Prefer Log.Msg or Log.Msgf to emit with full instrumentation.
 func (b *Log) Event() *zerolog.Event {
-	zl := *b.zlogger
-	if b.sampler != nil {
-		zl = zl.Sample(b.sampler)
-	}
-	return zl.WithLevel(b.level)
+	return b.event
 }
 
 // Msg outputs a log message from one or more values.
@@ -300,6 +279,7 @@ func (b *Log) Msg(msg ...any) {
 	b.depth++
 	switch len(msg) {
 	case 0:
+		b.event.Discard()
 		return
 	case 1:
 		switch v := msg[0].(type) {
@@ -317,30 +297,25 @@ func (b *Log) Msg(msg ...any) {
 // Msgf outputs a formatted log message.
 func (b *Log) Msgf(msg string, v ...any) {
 	if b.traceId != "" {
-		msg = fmt.Sprintf("traceId:[%s] ", b.traceId) + msg
+		msg = "[trace_id: " + b.traceId + "] " + msg
+	}
+	if b.logger.codeline && b.depth != 0 {
+		lineDesc, fn := codeline(b.depth)
+		b.event = b.event.Str("codeline", lineDesc).Str("func", fn)
 	}
 	if b.stack {
-		v = append(v, TakeStacktrace(b.depth+1))
+		b.event = b.event.Str("stack", TakeStacktrace(b.depth+1))
 	}
-	event := b.Event()
-	if b.depth != 0 {
-		lineDesc, fn := codeline(b.depth)
-		event = event.Str("codeline", lineDesc)
-		event = event.Str("func", fn)
-	}
-	if b.err != nil {
-		event = event.Err(b.err)
-	}
-	event.Msgf(msg, v...)
+	b.event.Msgf(msg, v...)
 }
 
 func codeline(n int) (lineDesc string, fn string) {
-	funcName, file, line, ok := runtime.Caller(n)
+	pc, file, line, ok := runtime.Caller(n)
 	if !ok {
 		return "", ""
 	}
 	if i := strings.Index(file, "src/"); i >= 0 {
-		return fmt.Sprintf("%s:%d", file[i+4:], line), runtime.FuncForPC(funcName).Name()
+		return fmt.Sprintf("%s:%d", file[i+4:], line), runtime.FuncForPC(pc).Name()
 	}
-	return fmt.Sprintf("%s:%d", file, line), runtime.FuncForPC(funcName).Name()
+	return fmt.Sprintf("%s:%d", file, line), runtime.FuncForPC(pc).Name()
 }
