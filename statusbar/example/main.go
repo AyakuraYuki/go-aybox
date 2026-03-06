@@ -47,7 +47,7 @@ func simulateLogs(logger *log.Logger, prefix string, count int) {
 		logger.Warn,
 	}
 	for i := 1; i <= count; i++ {
-		levels[rand.Intn(len(levels))](prefix).Msgf("processing step %d/%d", i, count)
+		levels[rand.Intn(len(levels))](prefix).Bool("ok", true).Msgf("processing step %d/%d", i, count)
 		time.Sleep(time.Duration(200+rand.Intn(400)) * time.Millisecond)
 	}
 }

@@ -41,9 +41,8 @@ func (c *Context) Error(name ...string) *Log {
 // all log entries created from it.
 func (c *Context) KV(key, val string) *Context {
 	base := c.baseLogger()
-	zl := base.With().Str(key, val).Logger()
 	nc := *c
-	nc.zlogger = &zl
+	nc.zlogger = new(base.With().Str(key, val).Logger())
 	return &nc
 }
 

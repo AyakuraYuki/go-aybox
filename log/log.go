@@ -104,6 +104,12 @@ func (l *Logger) Close() {
 	}
 }
 
+// Log starts a new message with no level. Setting GlobalLevel to Disabled
+// will still disable events produced by this method.
+func (l *Logger) Log(name ...string) *Log {
+	return l.newLog(l.depth, zerolog.NoLevel, name...)
+}
+
 // Debug returns a *Log at debug level, optionally tagged with name.
 func (l *Logger) Debug(name ...string) *Log {
 	return l.newLog(l.depth, zerolog.DebugLevel, name...)
@@ -173,8 +179,7 @@ func (b *Log) Context() context.Context {
 
 // KV adds a string key-value pair to this log entry.
 func (b *Log) KV(key string, val string) *Log {
-	zl := b.zlogger.With().Str(key, val).Logger()
-	b.zlogger = &zl
+	b.zlogger = new(b.zlogger.With().Str(key, val).Logger())
 	return b
 }
 
@@ -195,6 +200,89 @@ func (b *Log) Err(err error) *Log {
 	if b.level == zerolog.ErrorLevel {
 		b.err = err
 	}
+	return b
+}
+
+// Bool adds a bool key-value pair to this log entry.
+func (b *Log) Bool(key string, val bool) *Log {
+	b.zlogger = new(b.zlogger.With().Bool(key, val).Logger())
+	return b
+}
+
+// Int adds an int key-value pair to this log entry.
+func (b *Log) Int(key string, val int) *Log {
+	b.zlogger = new(b.zlogger.With().Int(key, val).Logger())
+	return b
+}
+
+// Int32 adds an int32 key-value pair to this log entry.
+func (b *Log) Int32(key string, val int32) *Log {
+	b.zlogger = new(b.zlogger.With().Int32(key, val).Logger())
+	return b
+}
+
+// Int64 adds an int64 key-value pair to this log entry.
+func (b *Log) Int64(key string, val int64) *Log {
+	b.zlogger = new(b.zlogger.With().Int64(key, val).Logger())
+	return b
+}
+
+// Uint adds a uint key-value pair to this log entry.
+func (b *Log) Uint(key string, val uint) *Log {
+	b.zlogger = new(b.zlogger.With().Uint(key, val).Logger())
+	return b
+}
+
+// Uint32 adds a uint32 key-value pair to this log entry.
+func (b *Log) Uint32(key string, val uint32) *Log {
+	b.zlogger = new(b.zlogger.With().Uint32(key, val).Logger())
+	return b
+}
+
+// Uint64 adds a uint64 key-value pair to this log entry.
+func (b *Log) Uint64(key string, val uint64) *Log {
+	b.zlogger = new(b.zlogger.With().Uint64(key, val).Logger())
+	return b
+}
+
+// Float32 adds a float32 key-value pair to this log entry.
+func (b *Log) Float32(key string, val float32) *Log {
+	b.zlogger = new(b.zlogger.With().Float32(key, val).Logger())
+	return b
+}
+
+// Float64 adds a float64 key-value pair to this log entry.
+func (b *Log) Float64(key string, val float64) *Log {
+	b.zlogger = new(b.zlogger.With().Float64(key, val).Logger())
+	return b
+}
+
+// Str adds a string key-value pair to this log entry.
+func (b *Log) Str(key, val string) *Log {
+	return b.KV(key, val)
+}
+
+// Strs adds a []string key-value pair to this log entry.
+func (b *Log) Strs(key string, vals []string) *Log {
+	b.zlogger = new(b.zlogger.With().Strs(key, vals).Logger())
+	return b
+}
+
+// Interface adds an any key-value pair to this log entry.
+func (b *Log) Interface(key string, val any) *Log {
+	b.zlogger = new(b.zlogger.With().Interface(key, val).Logger())
+	return b
+}
+
+// Time adds a time.Time key-value pair to this log entry.
+func (b *Log) Time(key string, val time.Time) *Log {
+	b.zlogger = new(b.zlogger.With().Time(key, val).Logger())
+	return b
+}
+
+// Dur adds a time.Duration key-value pair to this log entry.
+func (b *Log) Dur(key string, val time.Duration) *Log {
+	b.zlogger = new(b.zlogger.With().Dur(key, val).Logger())
 	return b
 }
 
