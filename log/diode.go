@@ -3,18 +3,13 @@ package log
 import (
 	"context"
 	"io"
-	"sync"
 	"time"
 
 	"code.cloudfoundry.org/go-diodes"
 	"github.com/rs/zerolog"
 )
 
-var bufPool = &sync.Pool{
-	New: func() interface{} {
-		return make([]byte, 0)
-	},
-}
+var diodeBufPool = NewBytesPool()
 
 // Writer is a io.Writer wrapper that uses a diode to make Write lock-free,
 // non-blocking and thread safe.
@@ -61,16 +56,15 @@ func NewAsyncWriter(
 	return dw
 }
 
-// Write writes data to writer
+// Write copies p into a pooled Buffer and enqueues it for the background writer.
 func (dw Writer) Write(p []byte) (n int, err error) {
-	// p is pooled in zerolog so we can't hold it passed this call, hence the
-	// copy.
-	p = append(bufPool.Get().([]byte), p...)
-	dw.d.Set(diodes.GenericDataType(&p))
+	buf := diodeBufPool.Get()
+	_, _ = buf.Write(p)
+	dw.d.Set(diodes.GenericDataType(buf))
 	return len(p), nil
 }
 
-// WriteLevel writes data to writer with level info provided
+// WriteLevel writes data to writer with level info provided.
 func (dw Writer) WriteLevel(level zerolog.Level, p []byte) (n int, err error) {
 	if level < dw.l {
 		return len(p), nil
@@ -78,7 +72,7 @@ func (dw Writer) WriteLevel(level zerolog.Level, p []byte) (n int, err error) {
 	return dw.Write(p)
 }
 
-// Close releases the diode poller and call Close on the wrapped writer if
+// Close releases the diode poller and calls Close on the wrapped writer if
 // io.Closer is implemented.
 func (dw Writer) Close() error {
 	dw.c()
@@ -96,8 +90,8 @@ func (dw Writer) poll() {
 		if d == nil {
 			return
 		}
-		p := *(*[]byte)(d)
-		_, _ = dw.w.Write(p)
-		bufPool.Put(p[:0])
+		buf := (*Buffer)(d)
+		_, _ = dw.w.Write(buf.Bytes())
+		buf.Free()
 	}
 }

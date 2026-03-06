@@ -317,7 +317,7 @@ func (sb *StatusBar) render() {
 	out += "\033[36m" + barLine + "\033[0m"
 	// 绘制状态行
 	out += fmt.Sprintf("\033[%d;1H\033[2K", statusRow)
-	out += "\033[97;46m" + statusLine + "\033[0m"
+	out += "\033[30;46m" + statusLine + "\033[0m"
 	out += "\0338" // 恢复光标到滚动区域内的原位置
 
 	_, _ = fmt.Fprint(sb.out, out)

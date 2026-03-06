@@ -2,11 +2,7 @@ package log
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"time"
 
-	"code.cloudfoundry.org/go-diodes"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
@@ -23,17 +19,15 @@ type RedisWriter struct {
 
 type RedisWriterOption func(*RedisWriter)
 
-func NewRedisWriter(opts ...RedisWriterOption) io.Writer {
+func NewRedisWriter(opts ...RedisWriterOption) *RedisWriter {
 	writer := &RedisWriter{
 		level:    zerolog.InfoLevel,
 		redisURL: "redis:6379",
 		logKey:   "ay:zlog:redis.writer:log",
 	}
-
 	for _, opt := range opts {
 		opt(writer)
 	}
-
 	redisOpt := &redis.Options{
 		Network: "tcp",
 		Addr:    writer.redisURL,
@@ -42,16 +36,12 @@ func NewRedisWriter(opts ...RedisWriterOption) io.Writer {
 		redisOpt.Password = writer.redisAuth
 	}
 	writer.client = redis.NewClient(redisOpt)
-
-	if async {
-		asyncWriter := NewAsyncWriter(writer.level, writer, diodes.NewManyToOne(1024, diodes.AlertFunc(func(missed int) {
-			fmt.Printf("redis writer dropped %d messages\n", missed)
-		})), 1*time.Second)
-		registerCloseFn(asyncWriter.Close)
-		return asyncWriter
-	}
-
 	return writer
+}
+
+// Level returns the minimum level accepted by this writer.
+func (c *RedisWriter) Level() zerolog.Level {
+	return c.level
 }
 
 // Write writes data to writer

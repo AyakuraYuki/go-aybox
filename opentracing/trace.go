@@ -19,6 +19,7 @@ import (
 
 	"github.com/AyakuraYuki/go-aybox/log"
 	ayStack "github.com/AyakuraYuki/go-aybox/stack"
+	"github.com/AyakuraYuki/go-aybox/trace"
 )
 
 func jaegerHost() string {
@@ -47,7 +48,7 @@ func NewJaegerTracer(serviceName, env string) (opentracing.Tracer, io.Closer, er
 	tracer, closer, err := cfg.NewTracer()
 
 	if err != nil {
-		log.Error("NewTracer").Msgf("%v", err)
+		log.Error(trace.FuncName()).Err(err).Msgf("%v", err)
 	}
 	if tracer != nil {
 		opentracing.SetGlobalTracer(tracer)
@@ -55,39 +56,6 @@ func NewJaegerTracer(serviceName, env string) (opentracing.Tracer, io.Closer, er
 
 	return tracer, closer, err
 }
-
-// // NewJaegerTracerHttp http trace
-// func NewJaegerTracerHttp(serviceName, env string) (opentracing.Tracer, io.Closer, error) {
-//	cfg := jaegercfg.Configuration{
-//		ServiceName: fmt.Sprintf("%s-%s", env, serviceName),
-//		Tags:        []opentracing.Tag{{Key: "env", Value: env}},
-//		Sampler: &jaegercfg.SamplerConfig{
-//			Type:  jaeger.SamplerTypeConst,
-//			Param: 1,
-//		},
-//		Reporter: &jaegercfg.ReporterConfig{
-//			LogSpans:            true,
-//			BufferFlushInterval: 1 * time.Second,
-//		},
-//	}
-//	var (
-//		_httpUrl = _httpUrlInner
-//	)
-//
-//	sender := transport.NewHTTPTransport(_httpUrl)
-//	reporter := jaeger.NewRemoteReporter(sender)
-//	tracer, closer, err := cfg.NewTracer(
-//		jaegercfg.Reporter(reporter),
-//	)
-//	if err != nil {
-//		log.Error("NewTracer").Msgf("%v", err)
-//	}
-//	if tracer != nil {
-//		opentracing.SetGlobalTracer(tracer)
-//	}
-//
-//	return tracer, closer, err
-// }
 
 // StartSpanFromContext 新建span
 func StartSpanFromContext(ctx context.Context, opName ...string) (opentracing.Span, context.Context) {
@@ -132,8 +100,7 @@ func SpanError(span opentracing.Span, err error) {
 	ext.Error.Set(span, true)
 	span.LogKV("err", err)
 
-	var stacktrace *ayStack.Stacktrace
-	if errors.As(err, &stacktrace) {
+	if stacktrace, ok := errors.AsType[*ayStack.Stacktrace](err); ok {
 		span.LogKV("__stacktrace__", stacktrace.Sources())
 	}
 }
@@ -157,8 +124,7 @@ func SpanLogKV(span opentracing.Span, keyValues ...any) {
 				ext.Error.Set(span, true)
 				span.LogKV(key, typedVal)
 
-				var stacktrace *ayStack.Stacktrace
-				if errors.As(typedVal, &stacktrace) {
+				if stacktrace, ok2 := errors.AsType[*ayStack.Stacktrace](typedVal); ok2 {
 					span.LogKV("__stacktrace__", stacktrace.Sources())
 				}
 			}

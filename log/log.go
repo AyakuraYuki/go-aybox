@@ -8,20 +8,12 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
+	"code.cloudfoundry.org/go-diodes"
 	"github.com/rs/zerolog"
 
 	"github.com/AyakuraYuki/go-aybox/ip"
-)
-
-var (
-	logger = func() *zerolog.Logger {
-		l := zerolog.New(NewConsoleWriter()).With().Timestamp().Str("host", ip.Hostname()).Logger()
-		return &l
-	}()
-	callDepth   = 2
-	async       = false
-	defaultName = "ay-zlog"
 )
 
 func init() {
@@ -30,6 +22,132 @@ func init() {
 	zerolog.TimeFieldFormat = ""
 }
 
+// CloseFn is a function that closes a resource.
+type CloseFn func() error
+
+// Logger is a multi-instance logger backed by zerolog.
+// Create one with New(); never share a pointer across goroutines without synchronisation.
+type Logger struct {
+	zlogger  zerolog.Logger
+	depth    int
+	closeFns []CloseFn
+}
+
+// New creates a Logger with the provided options.
+// If no WithOutput option is given, a ConsoleWriter is used.
+func New(opts ...Option) *Logger {
+	cfg := &config{
+		depth:    2,
+		hostname: ip.Hostname(),
+		level:    zerolog.DebugLevel,
+	}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	writers := cfg.writers
+	if len(writers) == 0 {
+		writers = []io.Writer{NewConsoleWriter()}
+	}
+
+	var closeFns []CloseFn
+	if cfg.async {
+		wrapped := make([]io.Writer, len(writers))
+		for i, w := range writers {
+			lvl := cfg.level
+			if lw, ok := w.(interface{ Level() zerolog.Level }); ok {
+				lvl = lw.Level()
+			}
+			aw := NewAsyncWriter(lvl, w,
+				diodes.NewManyToOne(1024, diodes.AlertFunc(func(missed int) {
+					fmt.Printf("logger dropped %d messages\n", missed)
+				})),
+				time.Second)
+			wrapped[i] = aw
+			closeFns = append(closeFns, aw.Close)
+		}
+		writers = wrapped
+	}
+
+	var out io.Writer
+	if len(writers) == 1 {
+		out = writers[0]
+	} else {
+		out = zerolog.MultiLevelWriter(writers...)
+	}
+
+	zl := zerolog.New(out).With().Timestamp().Str("host", cfg.hostname).Logger()
+	if len(cfg.fields) > 0 {
+		c := zl.With()
+		for k, v := range cfg.fields {
+			c = c.Str(k, v)
+		}
+		zl = c.Logger()
+	}
+
+	return &Logger{
+		zlogger:  zl,
+		depth:    cfg.depth,
+		closeFns: closeFns,
+	}
+}
+
+// Close flushes and closes all writers registered to this logger.
+func (l *Logger) Close() {
+	for _, fn := range l.closeFns {
+		_ = fn()
+	}
+}
+
+// Debug returns a *Log at debug level, optionally tagged with name.
+func (l *Logger) Debug(name ...string) *Log {
+	return l.newLog(l.depth, zerolog.DebugLevel, name...)
+}
+
+// Info returns a *Log at info level, optionally tagged with name.
+func (l *Logger) Info(name ...string) *Log {
+	return l.newLog(l.depth, zerolog.InfoLevel, name...)
+}
+
+// Warn returns a *Log at warn level, optionally tagged with name.
+func (l *Logger) Warn(name ...string) *Log {
+	return l.newLog(l.depth, zerolog.WarnLevel, name...)
+}
+
+// Error returns a *Log at error level, optionally tagged with name.
+func (l *Logger) Error(name ...string) *Log {
+	return l.newLog(l.depth, zerolog.ErrorLevel, name...)
+}
+
+// Sample returns a *LogContext with the given sampler applied to every entry.
+func (l *Logger) Sample(sampler zerolog.Sampler) *Context {
+	return &Context{logger: l, sampler: sampler}
+}
+
+// FromContext extracts a *LogContext stored by (*LogContext).ToContext.
+// Falls back to a plain *LogContext backed by this logger if none is found.
+func (l *Logger) FromContext(ctx context.Context) *Context {
+	if lc, ok := ctx.Value(contextKey{}).(*Context); ok {
+		return lc
+	}
+	return &Context{logger: l}
+}
+
+func (l *Logger) newLog(depth int, level zerolog.Level, name ...string) *Log {
+	zl := l.zlogger
+	if len(name) > 0 && name[0] != "" {
+		zl = zl.With().Str("name", name[0]).Logger()
+	}
+	return &Log{
+		depth:   depth,
+		level:   level,
+		zlogger: &zl,
+		logger:  l,
+	}
+}
+
+// Log carries per-call state for a single log entry.
+// Obtain one via Logger.Debug / Logger.Info / Logger.Warn / Logger.Error.
 type Log struct {
 	depth   int
 	level   zerolog.Level
@@ -38,99 +156,36 @@ type Log struct {
 	traceId string
 	zlogger *zerolog.Logger
 	sampler zerolog.Sampler
+	logger  *Logger
 }
 
-func NewLog() *Log {
-	return defaultLogger(nil, callDepth, zerolog.DebugLevel, defaultName)
-}
-
-func NewLogger(level zerolog.Level, project, env string, redisOpts ...string) *Log {
-	l := defaultLogger(nil, callDepth, level, project)
-	WithAsync()
-	WithAttachment(map[string]string{
-		"project": project,
-		"env":     env,
-	})
-
-	w := append([]io.Writer{}, NewConsoleWriter())
-	if len(redisOpts) > 0 && redisOpts[0] != "" {
-		// redis url detected
-		switch len(redisOpts) {
-		case 1:
-			w = append(w, NewRedisWriter(
-				WithRedisLogLevel(level),
-				WithRedisURL(redisOpts[0])))
-		case 2:
-			w = append(w, NewRedisWriter(
-				WithRedisLogLevel(level),
-				WithRedisURL(redisOpts[0]),
-				WithRedisAuth(redisOpts[1])))
-		}
-	}
-
-	WithOutput(w...)
-	return l
-}
-
-func defaultLogger(b *Log, depth int, level zerolog.Level, name ...string) *Log {
-	if b == nil {
-		b = &Log{zlogger: logger}
-	} else {
-		// snapshot
-		b = func() *Log {
-			nb := *b
-			return &nb
-		}()
-	}
-	b.depth = depth
-	b.level = level
-	if len(name) > 0 {
-		fields := map[string]any{
-			"name": name[0],
-		}
-		b.zlogger = logPtr(b.zlogger.With().Fields(fields).Logger())
-	}
-	return b
-}
-
-func Debug(name ...string) *Log {
-	return defaultLogger(nil, callDepth, zerolog.DebugLevel, name...)
-}
-
-func Info(name ...string) *Log {
-	return defaultLogger(nil, callDepth, zerolog.InfoLevel, name...)
-}
-
-func Warn(name ...string) *Log {
-	return defaultLogger(nil, callDepth, zerolog.WarnLevel, name...)
-}
-
-func Error(name ...string) *Log {
-	return defaultLogger(nil, callDepth, zerolog.ErrorLevel, name...)
-}
-
-// Context add wrapped *Log to context
+// Context stores this Log's zerolog state into a Go context (with context.Background as parent).
+// Retrieve it later with (*Logger).FromContext.
 func (b *Log) Context() context.Context {
-	return context.WithValue(context.Background(), contextKey{}, &Context{logger: b})
+	lc := &Context{logger: b.logger, zlogger: b.zlogger, sampler: b.sampler}
+	return context.WithValue(context.Background(), contextKey{}, lc)
 }
 
-// KV is log kv pairs.
+// KV adds a string key-value pair to this log entry.
 func (b *Log) KV(key string, val string) *Log {
-	b.zlogger = logPtr(b.zlogger.With().Str(key, val).Logger())
+	zl := b.zlogger.With().Str(key, val).Logger()
+	b.zlogger = &zl
 	return b
 }
 
+// TraceID prepends a trace ID to the message.
 func (b *Log) TraceID(traceId string) *Log {
 	b.traceId = traceId
 	return b
 }
 
-// Stack enables stack trace
+// Stack enables stack trace appended to the message.
 func (b *Log) Stack() *Log {
 	b.stack = true
 	return b
 }
 
+// Err attaches an error field (only effective at ErrorLevel).
 func (b *Log) Err(err error) *Log {
 	if b.level == zerolog.ErrorLevel {
 		b.err = err
@@ -138,16 +193,16 @@ func (b *Log) Err(err error) *Log {
 	return b
 }
 
-// Event returns zerolog.Event which contains Log details
+// Event returns a *zerolog.Event for direct zerolog API access.
 func (b *Log) Event() *zerolog.Event {
-	var l = *b.zlogger
+	zl := *b.zlogger
 	if b.sampler != nil {
-		l = l.Sample(b.sampler)
+		zl = zl.Sample(b.sampler)
 	}
-	return l.WithLevel(b.level)
+	return zl.WithLevel(b.level)
 }
 
-// Msg output
+// Msg outputs a log message from one or more values.
 func (b *Log) Msg(msg ...any) {
 	b.depth++
 	switch len(msg) {
@@ -162,121 +217,26 @@ func (b *Log) Msg(msg ...any) {
 		}
 	default:
 		fmtStr := strings.Repeat("%v, ", len(msg))
-		b.Msgf(fmtStr[:len(fmtStr)-2], msg...) // shrink last ', '
+		b.Msgf(fmtStr[:len(fmtStr)-2], msg...)
 	}
 }
 
-// Msgf formatted output
+// Msgf outputs a formatted log message.
 func (b *Log) Msgf(msg string, v ...any) {
-
 	if b.depth != 0 {
 		msg = codeline(b.depth) + msg
 	}
-
 	if b.traceId != "" {
 		msg = fmt.Sprintf("traceId:[%s] ", b.traceId) + msg
 	}
-
 	if b.stack {
 		v = append(v, TakeStacktrace(b.depth+1))
 	}
-
 	event := b.Event()
-
 	if b.err != nil {
 		event = event.Err(b.err)
 	}
-
 	event.Msgf(msg, v...)
-}
-
-// 实现 zk logger
-
-// Printf logs to INFO log. Arguments are handled in the manner of fmt.Printf.
-func (b *Log) Printf(format string, args ...any) {
-	b.Msgf(format, args)
-}
-
-// 实现 grpclog v2
-
-// Info logs to INFO log. Arguments are handled in the manner of fmt.Print.
-func (b *Log) Info(args ...any) {
-	b.Msg(args)
-}
-
-// Infoln logs to INFO log. Arguments are handled in the manner of fmt.Println.
-func (b *Log) Infoln(args ...any) {
-	b.Msg(args)
-}
-
-// Infof logs to INFO log. Arguments are handled in the manner of fmt.Printf.
-func (b *Log) Infof(format string, args ...any) {
-	b.Msgf(format, args)
-}
-
-// Warning logs to WARNING log. Arguments are handled in the manner of fmt.Print.
-func (b *Log) Warning(args ...any) {
-	b.level = zerolog.WarnLevel
-	b.Msg(args)
-}
-
-// Warningln logs to WARNING log. Arguments are handled in the manner of fmt.Println.
-func (b *Log) Warningln(args ...any) {
-	b.level = zerolog.WarnLevel
-	b.Msg(args)
-}
-
-// Warningf logs to WARNING log. Arguments are handled in the manner of fmt.Printf.
-func (b *Log) Warningf(format string, args ...any) {
-	b.level = zerolog.WarnLevel
-	b.Msgf(format, args)
-}
-
-// Error logs to ERROR log. Arguments are handled in the manner of fmt.Print.
-func (b *Log) Error(args ...any) {
-	b.level = zerolog.ErrorLevel
-	b.Msg(args)
-}
-
-// Errorln logs to ERROR log. Arguments are handled in the manner of fmt.Println.
-func (b *Log) Errorln(args ...any) {
-	b.level = zerolog.ErrorLevel
-	b.Msg(args)
-}
-
-// Errorf logs to ERROR log. Arguments are handled in the manner of fmt.Printf.
-func (b *Log) Errorf(format string, args ...any) {
-	b.level = zerolog.ErrorLevel
-	b.Msgf(format, args)
-}
-
-// Fatal logs to ERROR log. Arguments are handled in the manner of fmt.Print.
-// gRPC ensures that all Fatal logs will exit with os.Exit(1).
-// Implementations may also call os.Exit() with a non-zero exit code.
-func (b *Log) Fatal(args ...any) {
-	b.level = zerolog.FatalLevel
-	b.Msg(args)
-}
-
-// Fatalln logs to ERROR log. Arguments are handled in the manner of fmt.Println.
-// gRPC ensures that all Fatal logs will exit with os.Exit(1).
-// Implementations may also call os.Exit() with a non-zero exit code.
-func (b *Log) Fatalln(args ...any) {
-	b.level = zerolog.FatalLevel
-	b.Msg(args)
-}
-
-// Fatalf logs to ERROR log. Arguments are handled in the manner of fmt.Printf.
-// gRPC ensures that all Fatal logs will exit with os.Exit(1).
-// Implementations may also call os.Exit() with a non-zero exit code.
-func (b *Log) Fatalf(format string, args ...any) {
-	b.level = zerolog.FatalLevel
-	b.Msgf(format, args)
-}
-
-// V reports whether verbosity level l is at least the requested verbose level.
-func (b *Log) V(l int) bool {
-	return true
 }
 
 func codeline(n int) string {
@@ -284,29 +244,12 @@ func codeline(n int) string {
 	if !ok {
 		return ""
 	}
-	if i := strings.Index(file, "src/"); i != 0 {
+	if i := strings.Index(file, "src/"); i >= 0 {
 		return "[" + file[i+4:] + ":" + strconv.Itoa(line) + " " + runtime.FuncForPC(funcName).Name() + "] "
 	}
 	return "[" + file + ":" + strconv.Itoa(line) + " " + runtime.FuncForPC(funcName).Name() + "] "
 }
 
-func logPtr(z zerolog.Logger) *zerolog.Logger { return &z }
-
 func runInK8S() bool {
 	return strings.EqualFold(os.Getenv("LogEnv"), "k8s")
-}
-
-type CloseFn func() error
-
-var closeFuncs []CloseFn
-
-func registerCloseFn(fn CloseFn) {
-	closeFuncs = append(closeFuncs, fn)
-}
-
-// Close all log writer.
-func Close() {
-	for i := range closeFuncs {
-		_ = closeFuncs[i]()
-	}
 }

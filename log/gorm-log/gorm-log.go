@@ -45,11 +45,13 @@ const (
 
 type dbLog struct {
 	logger.Config
+	l                                   *log.Logger
 	infoStr, warnStr, errStr            string
 	traceStr, traceErrStr, traceWarnStr string
 }
 
-func NewDBLog(config logger.Config) logger.Interface {
+// NewDBLog creates a gorm logger.Interface backed by the provided *log.Logger.
+func NewDBLog(config logger.Config, l *log.Logger) logger.Interface {
 	var (
 		infoStr      = "%s "
 		warnStr      = "%s "
@@ -61,6 +63,7 @@ func NewDBLog(config logger.Config) logger.Interface {
 
 	return &dbLog{
 		Config:       config,
+		l:            l,
 		infoStr:      infoStr,
 		warnStr:      warnStr,
 		errStr:       errStr,
@@ -80,21 +83,21 @@ func (l *dbLog) LogMode(level logger.LogLevel) logger.Interface {
 // Info print info
 func (l dbLog) Info(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Info {
-		log.Info(dbLogName).Msgf(l.infoStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
+		l.l.Info(dbLogName).Msgf(l.infoStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
 // Warn print warn messages
 func (l dbLog) Warn(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Warn {
-		log.Warn(dbLogName).Msgf(l.warnStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
+		l.l.Warn(dbLogName).Msgf(l.warnStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
 // Error print error messages
 func (l dbLog) Error(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Error {
-		log.Error(dbLogName).Msgf(l.errStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
+		l.l.Error(dbLogName).Msgf(l.errStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
@@ -128,7 +131,7 @@ func (l dbLog) Trace(ctx context.Context, begin time.Time, fc func() (string, in
 			logStr = fmt.Sprintf(l.traceErrStr, utils.FileWithLineNum(), err, float64(elapsed.Nanoseconds())/1e6, rows, sql)
 		}
 
-		log.Error(dbLogName).Msg(logStr)
+		l.l.Error(dbLogName).Msg(logStr)
 
 	case elapsed > l.SlowThreshold && l.SlowThreshold != 0 && l.LogLevel >= logger.Warn:
 		slowLog := fmt.Sprintf("SLOW SQL >= %v", l.SlowThreshold)
@@ -139,13 +142,13 @@ func (l dbLog) Trace(ctx context.Context, begin time.Time, fc func() (string, in
 		} else {
 			logStr = fmt.Sprintf(l.traceWarnStr, utils.FileWithLineNum(), slowLog, float64(elapsed.Nanoseconds())/1e6, rows, sql)
 		}
-		log.Warn(dbSQLSlow).Msgf(logStr)
+		l.l.Warn(dbSQLSlow).Msgf(logStr)
 
 	case l.LogLevel == logger.Info:
 		if rows == -1 {
-			log.Info(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, "-", sql)
+			l.l.Info(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, "-", sql)
 		} else {
-			log.Info(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, rows, sql)
+			l.l.Info(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, rows, sql)
 		}
 	}
 }

@@ -1,59 +1,72 @@
 package log
 
 import (
-	"context"
 	"io"
 
 	"github.com/rs/zerolog"
 )
 
-// WithOutput set multiple log writers.
-// Be careful, all WithXXX method are non-thread safe.
-func WithOutput(w ...io.Writer) {
-	switch len(w) {
-	case 0:
-		return
-	case 1:
-		*logger = logger.Output(w[0])
-	default:
-		*logger = logger.Output(zerolog.MultiLevelWriter(w...))
+// config holds the builder state used by New.
+type config struct {
+	level    zerolog.Level
+	depth    int
+	async    bool
+	writers  []io.Writer
+	fields   map[string]string
+	hostname string
+}
+
+// Option configures a Logger at construction time.
+type Option func(*config)
+
+// WithLevel sets the minimum log level and the zerolog global level.
+func WithLevel(level zerolog.Level) Option {
+	return func(c *config) {
+		c.level = level
+		zerolog.SetGlobalLevel(level)
 	}
 }
 
-// WithLevel set global zerolog level.
-// Be careful, all WithXXX method are non-thread safe.
-func WithLevel(level zerolog.Level) {
-	zerolog.SetGlobalLevel(level)
-}
-
-// WithCallDepth set call depth for showing line number.
-// Be careful, all WithXXX method are non-thread safe.
-func WithCallDepth(depth int) {
-	callDepth = depth
-}
-
-// WithAsync enables async log, should use Close function to wait all flushed.
-// Be careful, all WithXXX method are non-thread safe.
-func WithAsync() {
-	async = true
-}
-
-// WithAttachment adds global key-value to logger.
-// Be careful, all WithXXX method are non-thread safe.
-func WithAttachment(kv map[string]string) {
-	for k, v := range kv {
-		*logger = logger.With().Str(k, v).Logger()
+// WithDepth overrides the default call-stack depth used for source-line
+// annotation.
+func WithDepth(depth int) Option {
+	return func(c *config) {
+		c.depth = depth
 	}
 }
 
-// WithContext creates a wrapped Log.
-// Be careful, all WithXXX method are non-thread safe.
-func WithContext(ctx ...context.Context) *Context {
-	if len(ctx) > 0 && ctx[0] != nil {
-		if l, ok := ctx[0].Value(contextKey{}).(*Context); ok {
-			return l
+// WithAsync enables non-blocking, lock-free log writing via a diode buffer.
+// Call Logger.Close to flush pending entries before process exit.
+func WithAsync() Option {
+	return func(c *config) {
+		c.async = true
+	}
+}
+
+// WithOutput adds one or more writers.
+// Multiple calls are additive; the first call overrides the default
+// ConsoleWriter.
+func WithOutput(w ...io.Writer) Option {
+	return func(c *config) {
+		c.writers = append(c.writers, w...)
+	}
+}
+
+// WithFields adds static key-value string fields to every log entry.
+func WithFields(kv map[string]string) Option {
+	return func(c *config) {
+		if c.fields == nil {
+			c.fields = make(map[string]string)
+		}
+		for k, v := range kv {
+			c.fields[k] = v
 		}
 	}
-	l := defaultLogger(nil, callDepth, zerolog.Disabled)
-	return &Context{logger: l}
+}
+
+// WithHostname changes hostname.
+func WithHostname(hostname string) Option {
+	return func(c *config) {
+		c.hostname = hostname
+	}
 }

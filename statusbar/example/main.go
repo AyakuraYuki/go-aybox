@@ -9,6 +9,8 @@ import (
 	"github.com/AyakuraYuki/go-aybox/statusbar"
 )
 
+var logger = log.New()
+
 func main() {
 	bar := statusbar.New()
 
@@ -43,7 +45,7 @@ func simulateLogs(prefix string, count int) {
 		level := levels[rand.Intn(len(levels))]
 		fmt.Printf("[%s] %s: processing step %d/%d ...\n",
 			level, prefix, i, count)
-		log.Info().Msg("xxx")
+		logger.Info().Msg("xxx")
 		time.Sleep(time.Duration(200+rand.Intn(400)) * time.Millisecond)
 	}
 }

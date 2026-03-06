@@ -1,41 +1,75 @@
 package log
 
-import "github.com/rs/zerolog"
+import (
+	"context"
+
+	"github.com/rs/zerolog"
+)
 
 type contextKey struct{}
 
+// Context carries shared log state (sampler, extra fields) across multiple log
+// entries.
+// Obtain one via Logger.Sample or Logger.FromContext.
 type Context struct {
-	logger *Log
+	logger  *Logger
+	zlogger *zerolog.Logger // optional override; nil means use logger.zlogger
+	sampler zerolog.Sampler
 }
 
-func Sample(sampler zerolog.Sampler) *Context {
-	l := defaultLogger(nil, callDepth, zerolog.Disabled)
-	l.sampler = sampler
-	return &Context{logger: l}
+// Debug returns a *Log at debug level.
+func (c *Context) Debug(name ...string) *Log {
+	return c.newLog(zerolog.DebugLevel, name...)
 }
 
-// Debug level msg
-func (b *Context) Debug(name ...string) *Log {
-	return defaultLogger(b.logger, callDepth, zerolog.DebugLevel, name...)
+// Info returns a *Log at info level.
+func (c *Context) Info(name ...string) *Log {
+	return c.newLog(zerolog.InfoLevel, name...)
 }
 
-// Info level msg
-func (b *Context) Info(name ...string) *Log {
-	return defaultLogger(b.logger, callDepth, zerolog.InfoLevel, name...)
+// Warn returns a *Log at warn level.
+func (c *Context) Warn(name ...string) *Log {
+	return c.newLog(zerolog.WarnLevel, name...)
 }
 
-// Warn level msg
-func (b *Context) Warn(name ...string) *Log {
-	return defaultLogger(b.logger, callDepth, zerolog.WarnLevel, name...)
+// Error returns a *Log at error level.
+func (c *Context) Error(name ...string) *Log {
+	return c.newLog(zerolog.ErrorLevel, name...)
 }
 
-// Error level msg
-func (b *Context) Error(name ...string) *Log {
-	return defaultLogger(b.logger, callDepth, zerolog.ErrorLevel, name...)
+// KV returns a new LogContext with an additional key-value field shared across
+// all log entries created from it.
+func (c *Context) KV(key, val string) *Context {
+	base := c.baseLogger()
+	zl := base.With().Str(key, val).Logger()
+	nc := *c
+	nc.zlogger = &zl
+	return &nc
 }
 
-// KV is log kv pairs.
-func (b *Context) KV(key string, val string) *Log {
-	b.logger.KV(key, val)
-	return b.logger
+// ToContext stores this LogContext in the provided Go context.
+// Retrieve it later with (*Logger).FromContext.
+func (c *Context) ToContext(parent context.Context) context.Context {
+	return context.WithValue(parent, contextKey{}, c)
+}
+
+func (c *Context) newLog(level zerolog.Level, name ...string) *Log {
+	zl := *c.baseLogger()
+	if len(name) > 0 && name[0] != "" {
+		zl = zl.With().Str("name", name[0]).Logger()
+	}
+	return &Log{
+		depth:   c.logger.depth,
+		level:   level,
+		zlogger: &zl,
+		sampler: c.sampler,
+		logger:  c.logger,
+	}
+}
+
+func (c *Context) baseLogger() *zerolog.Logger {
+	if c.zlogger != nil {
+		return c.zlogger
+	}
+	return &c.logger.zlogger
 }

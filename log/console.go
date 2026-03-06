@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"code.cloudfoundry.org/go-diodes"
 	"github.com/bytedance/sonic"
 	"github.com/rs/zerolog"
 )
@@ -48,26 +47,21 @@ type ConsoleWriter struct {
 
 type ConsoleWriterOption func(*ConsoleWriter)
 
-func NewConsoleWriter(opts ...ConsoleWriterOption) io.Writer {
+func NewConsoleWriter(opts ...ConsoleWriterOption) *ConsoleWriter {
 	writer := &ConsoleWriter{
 		level:   zerolog.DebugLevel,
 		noColor: runInK8S(),
 		out:     os.Stdout,
 	}
-
 	for _, opt := range opts {
 		opt(writer)
 	}
-
-	if async {
-		asyncWriter := NewAsyncWriter(writer.level, writer, diodes.NewManyToOne(1024, diodes.AlertFunc(func(missed int) {
-			fmt.Printf("console writer dropped %d messages\n", missed)
-		})), 1*time.Second)
-		registerCloseFn(asyncWriter.Close)
-		return asyncWriter
-	}
-
 	return writer
+}
+
+// Level returns the minimum level accepted by this writer.
+func (w *ConsoleWriter) Level() zerolog.Level {
+	return w.level
 }
 
 // Write data to writer.
