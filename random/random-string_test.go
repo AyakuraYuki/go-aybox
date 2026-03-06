@@ -13,6 +13,8 @@ func TestRandString(t *testing.T) {
 	assert.True(t, regexp.MustCompile(`[A-Z]{16}`).MatchString(RandString(16, Upper)))
 	assert.False(t, regexp.MustCompile(`[a-z]{16}`).MatchString(RandString(16, Upper)))
 	assert.True(t, regexp.MustCompile(`[a-zA-Z0-9]{16}`).MatchString(RandString(16, LowerUpperDigit)))
+
+	t.Log(RandString(16, LowerUpperDigit))
 }
 
 func BenchmarkRandString_16(b *testing.B) {
