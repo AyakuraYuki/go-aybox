@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"code.cloudfoundry.org/go-diodes"
@@ -109,6 +111,18 @@ func (l *Logger) Close() {
 	}
 }
 
+// With exposes the underlying zerolog.Context for direct field configuration
+// at setup time. Commit changes back with Accept.
+func (l *Logger) With() zerolog.Context {
+	return l.zlogger.With()
+}
+
+// Accept applies a configured zerolog.Context to this logger.
+// Intended for setup-time use alongside With.
+func (l *Logger) Accept(ctx zerolog.Context) {
+	l.zlogger = ctx.Logger()
+}
+
 // Log starts a new message with no level.
 func (l *Logger) Log(name ...string) *Log { return l.newLog(zerolog.NoLevel, name...) }
 
@@ -124,9 +138,22 @@ func (l *Logger) Warn(name ...string) *Log { return l.newLog(zerolog.WarnLevel, 
 // Error returns a *Log at error level, optionally tagged with name.
 func (l *Logger) Error(name ...string) *Log { return l.newLog(zerolog.ErrorLevel, name...) }
 
+// logPool recycles *Log objects to reduce per-call heap allocations.
+// Objects are only borrowed from the pool when a level is enabled; the nil
+// fast-path for disabled levels never touches the pool.
+//
+// Contract: after Msg or Msgf returns, the caller must not retain or use the
+// *Log — it is returned to the pool immediately after emission.
+var logPool = sync.Pool{
+	New: func() any {
+		return new(Log)
+	},
+}
+
 // newLog creates a *Log for the given level.
 // Returns nil without allocating when the level is disabled — same fast path
-// that zerolog uses for a nil *Event.
+// that zerolog uses for a nil *Event. Otherwise, borrows a *Log from logPool
+// and initializes every field to avoid stale state from a prior use.
 func (l *Logger) newLog(level zerolog.Level, name ...string) *Log {
 	event := l.zlogger.WithLevel(level)
 	if event == nil {
@@ -135,12 +162,14 @@ func (l *Logger) newLog(level zerolog.Level, name ...string) *Log {
 	if len(name) > 0 && name[0] != "" {
 		event = event.Str("name", name[0])
 	}
-	return &Log{
-		event:  event,
-		depth:  l.depth,
-		level:  level,
-		logger: l,
-	}
+	b := logPool.Get().(*Log)
+	b.event = event
+	b.depth = l.depth
+	b.level = level
+	b.stack = false
+	b.traceId = ""
+	b.logger = l
+	return b
 }
 
 // Log carries per-call state for a single log entry.
@@ -160,7 +189,7 @@ type Log struct {
 }
 
 // KV adds a string key-value pair to this log entry.
-func (b *Log) KV(key, val string) *Log { //nolint:unparam
+func (b *Log) KV(key, val string) *Log {
 	if b == nil {
 		return nil
 	}
@@ -333,16 +362,34 @@ func (b *Log) Event() *zerolog.Event {
 	return b.event
 }
 
-// Msg outputs a log message from one or more values.
+// Msg emits the log entry with a plain string message.
+// This is the zero-alloc terminal method: it uses event.Msg(string) internally,
+// avoiding any fmt.Sprintf overhead.
+//
+// The *Log is returned to the pool after emission; do not use b after Msg returns.
 func (b *Log) Msg(msg string) {
 	if b == nil {
 		return
 	}
-	b.depth++
-	b.Msgf(msg)
+	if b.traceId != "" {
+		msg = "[trace_id: " + b.traceId + "] " + msg
+	}
+	if b.logger.codeline && b.depth != 0 {
+		lineDesc, fn := codeline(b.depth)
+		b.event = b.event.Str("codeline", lineDesc).Str("func", fn)
+	}
+	if b.stack {
+		b.event = b.event.Str("stack", TakeStacktrace(b.depth+1))
+	}
+	b.event.Msg(msg)
+	b.recycle()
 }
 
-// Msgf outputs a formatted log message.
+// Msgf emits the log entry with a formatted message.
+// When called with no format arguments, it takes the same zero-alloc path as
+// Msg. The fmt.Sprintf cost is only paid when format arguments are present.
+//
+// The *Log is returned to the pool after emission; do not use b after Msgf returns.
 func (b *Log) Msgf(msg string, v ...any) {
 	if b == nil {
 		return
@@ -357,16 +404,36 @@ func (b *Log) Msgf(msg string, v ...any) {
 	if b.stack {
 		b.event = b.event.Str("stack", TakeStacktrace(b.depth+1))
 	}
-	b.event.Msgf(msg, v...)
+	if len(v) == 0 {
+		b.event.Msg(msg)
+	} else {
+		b.event.Msgf(msg, v...)
+	}
+	b.recycle()
 }
 
+// recycle clears heap-retaining fields and returns b to logPool.
+// Must only be called once per *Log, at the end of Msg or Msgf.
+func (b *Log) recycle() {
+	b.event = nil  // release zerolog event reference
+	b.traceId = "" // release string reference
+	b.logger = nil // release logger reference
+	logPool.Put(b)
+}
+
+// codeline returns the source file:line and function name at call depth n,
+// using strconv to avoid fmt.Sprintf overhead.
 func codeline(n int) (lineDesc string, fn string) {
 	pc, file, line, ok := runtime.Caller(n)
 	if !ok {
 		return "", ""
 	}
 	if i := strings.Index(file, "src/"); i >= 0 {
-		return fmt.Sprintf("%s:%d", file[i+4:], line), runtime.FuncForPC(pc).Name()
+		file = file[i+4:]
 	}
-	return fmt.Sprintf("%s:%d", file, line), runtime.FuncForPC(pc).Name()
+	buf := make([]byte, 0, len(file)+12)
+	buf = append(buf, file...)
+	buf = append(buf, ':')
+	buf = strconv.AppendInt(buf, int64(line), 10)
+	return string(buf), runtime.FuncForPC(pc).Name()
 }

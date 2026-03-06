@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -46,11 +47,13 @@ func BenchmarkInfo(b *testing.B) {
 }
 
 func BenchmarkContextFields(b *testing.B) {
-	logger := New(
-		WithWriters(io.Discard),
-		WithFields(map[string]string{
-			"string": "four!",
-		}))
+	logger := New(WithWriters(io.Discard))
+	ctx := logger.With().
+		Str("string", "four!").
+		Time("time", time.Time{}).
+		Int("int", 123).
+		Float32("float", -2.203230293249593)
+	logger.Accept(ctx)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
