@@ -2,52 +2,46 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/AyakuraYuki/go-aybox/statusbar"
 )
 
 func main() {
-	// create status bar with default options
 	bar := statusbar.New()
 
-	// or use customized options:
-	// bar := statusbar.NewWithOptions(
-	//     statusbar.WithRefreshRate(100),                // 100ms refresh rate
-	//     statusbar.WithStyle(statusbar.MinimalStyle()), // ASCII style
-	// )
-
-	// start status bar in an asynchronous coroutine manner
 	bar.Start()
-
-	// ensure stop status bar before program exit
 	defer bar.Stop()
 
-	// ——— do some tasks ———
+	bar.SetTask("LoadConfig")
+	simulateLogs("config", 8)
 
-	bar.SetTask("initialization")
-	doWork("loading config files...", 2*time.Second)
+	bar.SetTask("ConnectDB")
+	simulateLogs("database", 12)
 
-	bar.SetTask("connect to database")
-	doWork("connecting to database...", 3*time.Second)
+	bar.SetTask("Migration (1/3)")
+	simulateLogs("migration-users", 6)
 
-	bar.SetTask("migrate data (1/3)")
-	doWork("migrating t_user...", 2*time.Second)
+	bar.SetTask("Migration (2/3)")
+	simulateLogs("migration-orders", 10)
 
-	bar.SetTask("migrate data (2/3)")
-	doWork("migrating t_order...", 2*time.Second)
+	bar.SetTask("Migration (3/3)")
+	simulateLogs("migration-logs", 8)
 
-	bar.SetTask("migrate data (3/3)")
-	doWork("migrating t_log...", 2*time.Second)
-
-	bar.SetTask("summary")
-	doWork("generating summary...", 3*time.Second)
+	bar.SetTask("GenerateReport")
+	simulateLogs("report", 15)
 
 	bar.ClearTask()
-	fmt.Println("\n✅ All tasks done！")
+	fmt.Println("\n✅ All tasks completed!")
 }
 
-func doWork(msg string, duration time.Duration) {
-	fmt.Println(msg)
-	time.Sleep(duration)
+func simulateLogs(prefix string, count int) {
+	levels := []string{"INFO", "DEBUG", "WARN"}
+	for i := 1; i <= count; i++ {
+		level := levels[rand.Intn(len(levels))]
+		fmt.Printf("[%s] %s: processing step %d/%d ...\n",
+			level, prefix, i, count)
+		time.Sleep(time.Duration(200+rand.Intn(400)) * time.Millisecond)
+	}
 }
