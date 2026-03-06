@@ -71,9 +71,21 @@ func New(opts ...Option) *Logger {
 				})),
 				time.Second)
 			wrapped[i] = aw
+			// async.Writer.Close flushes the diode and then closes the
+			// underlying writer if it implements io.Closer, so we only need
+			// one entry per writer here.
 			closeFns = append(closeFns, aw.Close)
 		}
 		writers = wrapped
+	} else {
+		// In synchronous mode, collect Close functions for any writer that
+		// implements io.Closer (e.g. redis.Writer) so that Logger.Close
+		// properly releases their resources.
+		for _, w := range writers {
+			if c, ok := w.(io.Closer); ok {
+				closeFns = append(closeFns, c.Close)
+			}
+		}
 	}
 
 	var writer io.Writer
@@ -83,7 +95,9 @@ func New(opts ...Option) *Logger {
 		writer = zerolog.MultiLevelWriter(writers...)
 	}
 
-	logger := zerolog.New(writer).With().
+	logger := zerolog.New(writer).
+		Level(cfg.level).
+		With().
 		Timestamp().
 		Str("host", cfg.hostname).
 		Logger()
@@ -111,14 +125,19 @@ func (l *Logger) Close() {
 	}
 }
 
-// With exposes the underlying zerolog.Context for direct field configuration
-// at setup time. Commit changes back with Accept.
+// With exposes the underlying zerolog.Context for direct field configuration.
+// It must only be called during logger setup, before the logger is shared
+// across goroutines. Commit the changes back with Accept.
 func (l *Logger) With() zerolog.Context {
 	return l.zlogger.With()
 }
 
-// Accept applies a configured zerolog.Context to this logger.
-// Intended for setup-time use alongside With.
+// Accept applies a configured zerolog.Context to this logger, replacing the
+// underlying zerolog.Logger.
+//
+// WARNING: Accept is not goroutine-safe. It must only be called during logger
+// initialization, before the logger is passed to any goroutine. Calling Accept
+// concurrently with any logging method (Debug, Info, …) causes a data race.
 func (l *Logger) Accept(ctx zerolog.Context) {
 	l.zlogger = ctx.Logger()
 }
@@ -215,14 +234,12 @@ func (b *Log) Stack() *Log {
 	return b
 }
 
-// Err attaches an error field (only effective at ErrorLevel).
+// Err attaches an error to the log entry.
 func (b *Log) Err(err error) *Log {
 	if b == nil {
 		return nil
 	}
-	if b.level == zerolog.ErrorLevel {
-		b.event = b.event.Err(err)
-	}
+	b.event = b.event.Err(err)
 	return b
 }
 

@@ -16,6 +16,11 @@ func Default() *Logger {
 
 // SetDefault replaces the global Logger with l.
 // The old logger is NOT closed automatically; call Close on it if needed.
+//
+// WARNING: SetDefault is not goroutine-safe. It must only be called during
+// program initialisation, before any logging goroutine is started. Calling it
+// concurrently with package-level logging functions (Info, Debug, …) causes a
+// data race on defaultLogger.
 func SetDefault(l *Logger) {
 	defaultLogger = l
 }

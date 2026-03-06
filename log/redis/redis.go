@@ -2,12 +2,19 @@ package redis
 
 import (
 	"context"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
 
 var _ zerolog.LevelWriter = (*Writer)(nil)
+var _ interface{ Close() error } = (*Writer)(nil)
+
+// writeTimeout is the per-call deadline applied to every LPUSH. Keeping it
+// short ensures that a slow or unavailable Redis instance does not block the
+// logging hot path for longer than necessary.
+const writeTimeout = 5 * time.Second
 
 type Writer struct {
 	level     zerolog.Level
@@ -44,9 +51,24 @@ func (c *Writer) Level() zerolog.Level {
 	return c.level
 }
 
-// Write writes data to writer
+// Write pushes p as a new entry to the Redis list identified by logKey.
+// A short deadline (writeTimeout) is applied so that a slow or unavailable
+// Redis instance does not block the caller indefinitely.
 func (c *Writer) Write(p []byte) (n int, err error) {
-	return len(p), c.client.LPush(context.Background(), c.logKey, p).Err()
+	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
+	defer cancel()
+	// Copy p before the call: the caller may reuse the buffer immediately
+	// after Write returns, and go-redis may not copy it before the network write.
+	entry := make([]byte, len(p))
+	copy(entry, p)
+	return len(p), c.client.LPush(ctx, c.logKey, entry).Err()
+}
+
+// Close closes the underlying Redis client and releases its connection pool.
+// It must be called when the writer is no longer needed; Logger.Close will
+// call it automatically when this Writer is registered via WithWriters.
+func (c *Writer) Close() error {
+	return c.client.Close()
 }
 
 // WriteLevel writes data to writer with level info provided

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -20,19 +19,6 @@ const (
 	dbLogName = "DBLog"
 	dbSQLSlow = "DBSQLSlow"
 )
-
-var env string
-var serviceName string
-
-func init() {
-	env = os.Getenv("ENV")
-	if env == "" {
-		env = "pro"
-	}
-}
-
-func WithGormLogEnv(mEnv string)                 { env = mEnv }
-func WithGormLogServiceName(mServiceName string) { serviceName = mServiceName }
 
 type LogLevel int
 
@@ -148,7 +134,7 @@ func (l *dbLog) Trace(ctx context.Context, begin time.Time, fc func() (string, i
 		} else {
 			logStr = fmt.Sprintf(l.traceWarnStr, utils.FileWithLineNum(), slowLog, float64(elapsed.Nanoseconds())/1e6, rows, sql)
 		}
-		l.zl.Warn(dbSQLSlow).Msgf(logStr)
+		l.zl.Warn(dbSQLSlow).Msg(logStr)
 
 	case l.LogLevel == logger.Info:
 		if rows == -1 {

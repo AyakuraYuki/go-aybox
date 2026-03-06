@@ -79,12 +79,14 @@ func (c *Context) newLog(level zerolog.Level, name ...string) *Log {
 	if len(name) > 0 && name[0] != "" {
 		event = event.Str("name", name[0])
 	}
-	return &Log{
-		event:  event,
-		depth:  c.logger.depth,
-		level:  level,
-		logger: c.logger,
-	}
+	b := logPool.Get().(*Log)
+	b.event = event
+	b.depth = c.logger.depth
+	b.level = level
+	b.stack = false
+	b.traceId = ""
+	b.logger = c.logger
+	return b
 }
 
 func (c *Context) baseLogger() *zerolog.Logger {

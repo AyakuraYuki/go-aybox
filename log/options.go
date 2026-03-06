@@ -20,11 +20,13 @@ type config struct {
 // Option configures a Logger at construction time.
 type Option func(*config)
 
-// WithLevel sets the minimum log level and the zerolog global level.
+// WithLevel sets the minimum log level for this Logger instance.
+// It does NOT call zerolog.SetGlobalLevel; each Logger instance filters
+// independently so that multiple loggers at different levels can coexist
+// in the same process without interfering with each other.
 func WithLevel(level zerolog.Level) Option {
 	return func(c *config) {
 		c.level = level
-		zerolog.SetGlobalLevel(level)
 	}
 }
 
@@ -44,8 +46,8 @@ func WithAsync() Option {
 	}
 }
 
-// WithCodeline enables file:line ("codeline") and function name ("func") fields
-// on every log entry. Disabled by default.
+// WithCodeline enables file:line ("codeline") and function name ("func")
+// fields on every log entry. Disabled by default.
 func WithCodeline() Option {
 	return func(c *config) {
 		c.codeline = true
