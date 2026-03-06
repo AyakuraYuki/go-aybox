@@ -73,6 +73,9 @@ func (c *Context) newLog(level zerolog.Level, name ...string) *Log {
 		zl = zl.Sample(c.sampler)
 	}
 	event := zl.WithLevel(level)
+	if event == nil {
+		return nil
+	}
 	if len(name) > 0 && name[0] != "" {
 		event = event.Str("name", name[0])
 	}

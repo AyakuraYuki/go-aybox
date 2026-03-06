@@ -1,11 +1,11 @@
-package log_test
+package log
 
 import (
 	"errors"
 	"io"
 	"testing"
 
-	"github.com/AyakuraYuki/go-aybox/log"
+	"github.com/rs/zerolog"
 )
 
 var (
@@ -14,11 +14,47 @@ var (
 )
 
 func BenchmarkLogEmpty(b *testing.B) {
-	logger := log.New(log.WithWriters(io.Discard))
+	logger := New(WithWriters(io.Discard))
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			logger.Log().Msg("")
+		}
+	})
+}
+
+func BenchmarkDisabled(b *testing.B) {
+	logger := New(
+		WithWriters(io.Discard),
+		WithLevel(zerolog.Disabled))
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info().Msg(fakeMessage)
+		}
+	})
+}
+
+func BenchmarkInfo(b *testing.B) {
+	logger := New(WithWriters(io.Discard))
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info().Msg(fakeMessage)
+		}
+	})
+}
+
+func BenchmarkContextFields(b *testing.B) {
+	logger := New(
+		WithWriters(io.Discard),
+		WithFields(map[string]string{
+			"string": "four!",
+		}))
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info().Msg(fakeMessage)
 		}
 	})
 }

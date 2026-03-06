@@ -24,6 +24,7 @@ func init() {
 // CloseFn is a function that closes a resource.
 type CloseFn func() error
 
+// Leveler is implemented by writers that expose a minimum log level.
 type Leveler interface {
 	Level() zerolog.Level
 }
@@ -41,9 +42,9 @@ type Logger struct {
 // If no WithWriters option is given, a ConsoleWriter is used.
 func New(opts ...Option) *Logger {
 	cfg := &config{
+		level:    zerolog.DebugLevel,
 		depth:    2,
 		hostname: ip.Hostname(),
-		level:    zerolog.DebugLevel,
 	}
 	for _, opt := range opts {
 		opt(cfg)
@@ -109,32 +110,28 @@ func (l *Logger) Close() {
 }
 
 // Log starts a new message with no level.
-func (l *Logger) Log(name ...string) *Log {
-	return l.newLog(zerolog.NoLevel, name...)
-}
+func (l *Logger) Log(name ...string) *Log { return l.newLog(zerolog.NoLevel, name...) }
 
 // Debug returns a *Log at debug level, optionally tagged with name.
-func (l *Logger) Debug(name ...string) *Log {
-	return l.newLog(zerolog.DebugLevel, name...)
-}
+func (l *Logger) Debug(name ...string) *Log { return l.newLog(zerolog.DebugLevel, name...) }
 
 // Info returns a *Log at info level, optionally tagged with name.
-func (l *Logger) Info(name ...string) *Log {
-	return l.newLog(zerolog.InfoLevel, name...)
-}
+func (l *Logger) Info(name ...string) *Log { return l.newLog(zerolog.InfoLevel, name...) }
 
 // Warn returns a *Log at warn level, optionally tagged with name.
-func (l *Logger) Warn(name ...string) *Log {
-	return l.newLog(zerolog.WarnLevel, name...)
-}
+func (l *Logger) Warn(name ...string) *Log { return l.newLog(zerolog.WarnLevel, name...) }
 
 // Error returns a *Log at error level, optionally tagged with name.
-func (l *Logger) Error(name ...string) *Log {
-	return l.newLog(zerolog.ErrorLevel, name...)
-}
+func (l *Logger) Error(name ...string) *Log { return l.newLog(zerolog.ErrorLevel, name...) }
 
+// newLog creates a *Log for the given level.
+// Returns nil without allocating when the level is disabled — same fast path
+// that zerolog uses for a nil *Event.
 func (l *Logger) newLog(level zerolog.Level, name ...string) *Log {
 	event := l.zlogger.WithLevel(level)
+	if event == nil {
+		return nil
+	}
 	if len(name) > 0 && name[0] != "" {
 		event = event.Str("name", name[0])
 	}
@@ -148,6 +145,11 @@ func (l *Logger) newLog(level zerolog.Level, name ...string) *Log {
 
 // Log carries per-call state for a single log entry.
 // Obtain one via Logger.Debug / Logger.Info / Logger.Warn / Logger.Error.
+//
+// Every method is nil-safe: when a Logger's effective level excludes the
+// requested level, the factory (e.g. Logger.Info) returns nil, and every
+// chained call on nil *Log is a no-op — mirroring zerolog's nil *Event path
+// so that disabled-level call sites cost essentially nothing.
 type Log struct {
 	event   *zerolog.Event
 	depth   int
@@ -158,25 +160,37 @@ type Log struct {
 }
 
 // KV adds a string key-value pair to this log entry.
-func (b *Log) KV(key, val string) *Log {
+func (b *Log) KV(key, val string) *Log { //nolint:unparam
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Str(key, val)
 	return b
 }
 
 // TraceID prepends a trace ID to the message.
 func (b *Log) TraceID(traceId string) *Log {
+	if b == nil {
+		return nil
+	}
 	b.traceId = traceId
 	return b
 }
 
 // Stack enables a stack trace field ("stack") on this log entry.
 func (b *Log) Stack() *Log {
+	if b == nil {
+		return nil
+	}
 	b.stack = true
 	return b
 }
 
 // Err attaches an error field (only effective at ErrorLevel).
 func (b *Log) Err(err error) *Log {
+	if b == nil {
+		return nil
+	}
 	if b.level == zerolog.ErrorLevel {
 		b.event = b.event.Err(err)
 	}
@@ -185,84 +199,126 @@ func (b *Log) Err(err error) *Log {
 
 // Bool adds a bool key-value pair to this log entry.
 func (b *Log) Bool(key string, val bool) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Bool(key, val)
 	return b
 }
 
 // Int adds an int key-value pair to this log entry.
 func (b *Log) Int(key string, val int) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Int(key, val)
 	return b
 }
 
 // Int32 adds an int32 key-value pair to this log entry.
 func (b *Log) Int32(key string, val int32) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Int32(key, val)
 	return b
 }
 
 // Int64 adds an int64 key-value pair to this log entry.
 func (b *Log) Int64(key string, val int64) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Int64(key, val)
 	return b
 }
 
 // Uint adds a uint key-value pair to this log entry.
 func (b *Log) Uint(key string, val uint) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Uint(key, val)
 	return b
 }
 
 // Uint32 adds a uint32 key-value pair to this log entry.
 func (b *Log) Uint32(key string, val uint32) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Uint32(key, val)
 	return b
 }
 
 // Uint64 adds a uint64 key-value pair to this log entry.
 func (b *Log) Uint64(key string, val uint64) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Uint64(key, val)
 	return b
 }
 
 // Float32 adds a float32 key-value pair to this log entry.
 func (b *Log) Float32(key string, val float32) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Float32(key, val)
 	return b
 }
 
 // Float64 adds a float64 key-value pair to this log entry.
 func (b *Log) Float64(key string, val float64) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Float64(key, val)
 	return b
 }
 
 // Str adds a string key-value pair to this log entry.
 func (b *Log) Str(key, val string) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Str(key, val)
 	return b
 }
 
 // Strs adds a []string key-value pair to this log entry.
 func (b *Log) Strs(key string, vals []string) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Strs(key, vals)
 	return b
 }
 
 // Interface adds an any key-value pair to this log entry.
 func (b *Log) Interface(key string, val any) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Interface(key, val)
 	return b
 }
 
 // Time adds a time.Time key-value pair to this log entry.
 func (b *Log) Time(key string, val time.Time) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Time(key, val)
 	return b
 }
 
 // Dur adds a time.Duration key-value pair to this log entry.
 func (b *Log) Dur(key string, val time.Duration) *Log {
+	if b == nil {
+		return nil
+	}
 	b.event = b.event.Dur(key, val)
 	return b
 }
@@ -271,31 +327,26 @@ func (b *Log) Dur(key string, val time.Duration) *Log {
 // Calling .Msg() on the returned event bypasses TraceID, codeline, and stack
 // trace. Prefer Log.Msg or Log.Msgf to emit with full instrumentation.
 func (b *Log) Event() *zerolog.Event {
+	if b == nil {
+		return nil
+	}
 	return b.event
 }
 
 // Msg outputs a log message from one or more values.
-func (b *Log) Msg(msg ...any) {
-	b.depth++
-	switch len(msg) {
-	case 0:
-		b.event.Discard()
+func (b *Log) Msg(msg string) {
+	if b == nil {
 		return
-	case 1:
-		switch v := msg[0].(type) {
-		case string:
-			b.Msgf(v)
-		default:
-			b.Msgf("%v", v)
-		}
-	default:
-		fmtStr := strings.Repeat("%v, ", len(msg))
-		b.Msgf(fmtStr[:len(fmtStr)-2], msg...)
 	}
+	b.depth++
+	b.Msgf(msg)
 }
 
 // Msgf outputs a formatted log message.
 func (b *Log) Msgf(msg string, v ...any) {
+	if b == nil {
+		return
+	}
 	if b.traceId != "" {
 		msg = "[trace_id: " + b.traceId + "] " + msg
 	}
