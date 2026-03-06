@@ -1,4 +1,4 @@
-package log
+package async
 
 import (
 	"context"
@@ -7,9 +7,11 @@ import (
 
 	"code.cloudfoundry.org/go-diodes"
 	"github.com/rs/zerolog"
+
+	bytesPool "github.com/AyakuraYuki/go-aybox/log/bytes_pool"
 )
 
-var diodeBufPool = NewBytesPool()
+var diodeBufPool = bytesPool.NewPool()
 
 // Writer is a io.Writer wrapper that uses a diode to make Write lock-free,
 // non-blocking and thread safe.
@@ -22,7 +24,7 @@ type Writer struct {
 	done chan struct{}
 }
 
-// NewAsyncWriter creates a writer wrapping w with a many-to-one diode in order
+// New creates a writer wrapping w with a many-to-one diode in order
 // to never block log producers and drop events if the writer can't keep up
 // with the flow of data.
 //
@@ -35,7 +37,7 @@ type Writer struct {
 //	log := zerolog.New(w)
 //
 // See code.cloudfoundry.org/go-diodes for more info on diode.
-func NewAsyncWriter(
+func New(
 	l zerolog.Level,
 	w io.Writer,
 	manyToOneDiode *diodes.ManyToOne,
@@ -90,7 +92,7 @@ func (dw Writer) poll() {
 		if d == nil {
 			return
 		}
-		buf := (*Buffer)(d)
+		buf := (*bytesPool.Buffer)(d)
 		_, _ = dw.w.Write(buf.Bytes())
 		buf.Free()
 	}

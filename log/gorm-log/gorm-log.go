@@ -43,15 +43,21 @@ const (
 	LogLevelInfo
 )
 
+var _ logger.Interface = (*dbLog)(nil)
+
 type dbLog struct {
 	logger.Config
-	l                                   *log.Logger
-	infoStr, warnStr, errStr            string
-	traceStr, traceErrStr, traceWarnStr string
+	zl           *log.Logger
+	infoStr      string
+	warnStr      string
+	errStr       string
+	traceStr     string
+	traceErrStr  string
+	traceWarnStr string
 }
 
-// NewDBLog creates a gorm logger.Interface backed by the provided *log.Logger.
-func NewDBLog(config logger.Config, l *log.Logger) logger.Interface {
+// New creates a gorm logger.Interface backed by the provided *log.Logger.
+func New(config logger.Config, zl *log.Logger) logger.Interface {
 	var (
 		infoStr      = "%s "
 		warnStr      = "%s "
@@ -63,7 +69,7 @@ func NewDBLog(config logger.Config, l *log.Logger) logger.Interface {
 
 	return &dbLog{
 		Config:       config,
-		l:            l,
+		zl:           zl,
 		infoStr:      infoStr,
 		warnStr:      warnStr,
 		errStr:       errStr,
@@ -75,34 +81,34 @@ func NewDBLog(config logger.Config, l *log.Logger) logger.Interface {
 
 // LogMode log mode
 func (l *dbLog) LogMode(level logger.LogLevel) logger.Interface {
-	newlogger := *l
-	newlogger.LogLevel = level
-	return &newlogger
+	nl := *l
+	nl.LogLevel = level
+	return &nl
 }
 
 // Info print info
-func (l dbLog) Info(ctx context.Context, msg string, data ...any) {
+func (l *dbLog) Info(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Info {
-		l.l.Info(dbLogName).Msgf(l.infoStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
+		l.zl.Info(dbLogName).Msgf(l.infoStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
 // Warn print warn messages
-func (l dbLog) Warn(ctx context.Context, msg string, data ...any) {
+func (l *dbLog) Warn(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Warn {
-		l.l.Warn(dbLogName).Msgf(l.warnStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
+		l.zl.Warn(dbLogName).Msgf(l.warnStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
 // Error print error messages
-func (l dbLog) Error(ctx context.Context, msg string, data ...any) {
+func (l *dbLog) Error(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Error {
-		l.l.Error(dbLogName).Msgf(l.errStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
+		l.zl.Error(dbLogName).Msgf(l.errStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
 // Trace print sql message
-func (l dbLog) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+func (l *dbLog) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
 	if l.LogLevel <= logger.Silent {
 		return
 	}
@@ -131,7 +137,7 @@ func (l dbLog) Trace(ctx context.Context, begin time.Time, fc func() (string, in
 			logStr = fmt.Sprintf(l.traceErrStr, utils.FileWithLineNum(), err, float64(elapsed.Nanoseconds())/1e6, rows, sql)
 		}
 
-		l.l.Error(dbLogName).Msg(logStr)
+		l.zl.Error(dbLogName).Msg(logStr)
 
 	case elapsed > l.SlowThreshold && l.SlowThreshold != 0 && l.LogLevel >= logger.Warn:
 		slowLog := fmt.Sprintf("SLOW SQL >= %v", l.SlowThreshold)
@@ -142,13 +148,13 @@ func (l dbLog) Trace(ctx context.Context, begin time.Time, fc func() (string, in
 		} else {
 			logStr = fmt.Sprintf(l.traceWarnStr, utils.FileWithLineNum(), slowLog, float64(elapsed.Nanoseconds())/1e6, rows, sql)
 		}
-		l.l.Warn(dbSQLSlow).Msgf(logStr)
+		l.zl.Warn(dbSQLSlow).Msgf(logStr)
 
 	case l.LogLevel == logger.Info:
 		if rows == -1 {
-			l.l.Info(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, "-", sql)
+			l.zl.Info(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, "-", sql)
 		} else {
-			l.l.Info(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, rows, sql)
+			l.zl.Info(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, rows, sql)
 		}
 	}
 }

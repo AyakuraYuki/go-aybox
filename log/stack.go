@@ -3,6 +3,8 @@ package log
 import (
 	"runtime"
 	"sync"
+
+	bytesPool "github.com/AyakuraYuki/go-aybox/log/bytes_pool"
 )
 
 var stacktracePool = sync.Pool{
@@ -19,7 +21,7 @@ func newProgramCounters(size int) *programCounters {
 	return &programCounters{pcs: make([]uintptr, size)}
 }
 
-var bufferPool = NewBytesPool()
+var bufferPool = bytesPool.NewPool()
 
 func TakeStacktrace(skipOpt ...int) string {
 	skip := 2

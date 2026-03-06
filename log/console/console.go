@@ -1,4 +1,4 @@
-package log
+package console
 
 import (
 	"bytes"
@@ -13,11 +13,13 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/rs/zerolog"
+
+	"github.com/AyakuraYuki/go-aybox/env"
 )
 
-var _ zerolog.LevelWriter = (*ConsoleWriter)(nil)
+var _ zerolog.LevelWriter = (*Writer)(nil)
 
-const consoleFormatJSON = "json"
+const formatJSON = "json"
 
 const (
 	cReset    = 0
@@ -32,25 +34,25 @@ const (
 	cDarkGray = 90
 )
 
-var consoleBufPool = sync.Pool{
+var bufPool = sync.Pool{
 	New: func() any {
 		return bytes.NewBuffer(make([]byte, 0))
 	},
 }
 
-type ConsoleWriter struct {
+type Writer struct {
 	level   zerolog.Level
 	format  string // empty or JSON
 	noColor bool
 	out     io.Writer
 }
 
-type ConsoleWriterOption func(*ConsoleWriter)
+type Option func(*Writer)
 
-func NewConsoleWriter(opts ...ConsoleWriterOption) *ConsoleWriter {
-	writer := &ConsoleWriter{
+func New(opts ...Option) *Writer {
+	writer := &Writer{
 		level:   zerolog.DebugLevel,
-		noColor: runInK8S(),
+		noColor: env.RunsInK8S(),
 		out:     os.Stdout,
 	}
 	for _, opt := range opts {
@@ -60,13 +62,13 @@ func NewConsoleWriter(opts ...ConsoleWriterOption) *ConsoleWriter {
 }
 
 // Level returns the minimum level accepted by this writer.
-func (w *ConsoleWriter) Level() zerolog.Level {
+func (w *Writer) Level() zerolog.Level {
 	return w.level
 }
 
 // Write data to writer.
-func (w *ConsoleWriter) Write(p []byte) (n int, err error) {
-	if w.format == consoleFormatJSON {
+func (w *Writer) Write(p []byte) (n int, err error) {
+	if w.format == formatJSON {
 		_, _ = w.out.Write(p)
 		n = len(p)
 		return
@@ -78,8 +80,8 @@ func (w *ConsoleWriter) Write(p []byte) (n int, err error) {
 		return
 	}
 
-	buf := consoleBufPool.Get().(*bytes.Buffer)
-	defer consoleBufPool.Put(buf)
+	buf := bufPool.Get().(*bytes.Buffer)
+	defer bufPool.Put(buf)
 
 	var (
 		level    = "?????"
@@ -87,7 +89,7 @@ func (w *ConsoleWriter) Write(p []byte) (n int, err error) {
 	)
 	if l, ok := event[zerolog.LevelFieldName].(string); ok {
 		level = l
-		lvlColor = levelColor(l, w.noColor)
+		lvlColor = colorizeLevel(l, w.noColor)
 	}
 	if _, ok := event[zerolog.TimestampFieldName]; ok {
 		event[zerolog.TimestampFieldName] = time.Now().Format("2006-01-02 15:04:05.999999")
@@ -134,7 +136,7 @@ func (w *ConsoleWriter) Write(p []byte) (n int, err error) {
 }
 
 // WriteLevel writes data to writer with level info provided
-func (w *ConsoleWriter) WriteLevel(level zerolog.Level, p []byte) (n int, err error) {
+func (w *Writer) WriteLevel(level zerolog.Level, p []byte) (n int, err error) {
 	if level < w.level {
 		return len(p), nil
 	}
@@ -148,7 +150,7 @@ func colorize(s any, color int, noColor bool) string {
 	return fmt.Sprintf("\x1b[%dm%v\x1b[0m", color, s)
 }
 
-func levelColor(level string, noColor bool) int {
+func colorizeLevel(level string, noColor bool) int {
 	if noColor {
 		return cReset
 	}
@@ -175,26 +177,26 @@ func needsQuote(s string) bool {
 	return false
 }
 
-func WithConsoleLogLevel(level zerolog.Level) ConsoleWriterOption {
-	return func(w *ConsoleWriter) {
+func WithLogLevel(level zerolog.Level) Option {
+	return func(w *Writer) {
 		w.level = level
 	}
 }
 
-func WithConsoleFormatJSON() ConsoleWriterOption {
-	return func(w *ConsoleWriter) {
-		w.format = consoleFormatJSON
+func WithJSONFormat() Option {
+	return func(w *Writer) {
+		w.format = formatJSON
 	}
 }
 
-func WithConsoleNoColor() ConsoleWriterOption {
-	return func(w *ConsoleWriter) {
+func WithNoColor() Option {
+	return func(w *Writer) {
 		w.noColor = true
 	}
 }
 
-func WithConsoleWriter(out io.Writer) ConsoleWriterOption {
-	return func(w *ConsoleWriter) {
+func WithWriter(out io.Writer) Option {
+	return func(w *Writer) {
 		if out != nil {
 			w.out = out
 		}

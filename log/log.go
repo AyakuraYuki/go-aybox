@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +12,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/AyakuraYuki/go-aybox/ip"
+	"github.com/AyakuraYuki/go-aybox/log/async"
+	"github.com/AyakuraYuki/go-aybox/log/console"
 )
 
 func init() {
@@ -24,6 +24,10 @@ func init() {
 
 // CloseFn is a function that closes a resource.
 type CloseFn func() error
+
+type Leveler interface {
+	Level() zerolog.Level
+}
 
 // Logger is a multi-instance logger backed by zerolog.
 // Create one with New(); never share a pointer across goroutines without synchronisation.
@@ -47,18 +51,19 @@ func New(opts ...Option) *Logger {
 
 	writers := cfg.writers
 	if len(writers) == 0 {
-		writers = []io.Writer{NewConsoleWriter()}
+		// use console writer as default
+		writers = []io.Writer{console.New()}
 	}
 
 	var closeFns []CloseFn
 	if cfg.async {
 		wrapped := make([]io.Writer, len(writers))
-		for i, w := range writers {
+		for i, writer := range writers {
 			lvl := cfg.level
-			if lw, ok := w.(interface{ Level() zerolog.Level }); ok {
+			if lw, ok := writer.(Leveler); ok {
 				lvl = lw.Level()
 			}
-			aw := NewAsyncWriter(lvl, w,
+			aw := async.New(lvl, writer,
 				diodes.NewManyToOne(1024, diodes.AlertFunc(func(missed int) {
 					fmt.Printf("logger dropped %d messages\n", missed)
 				})),
@@ -223,9 +228,6 @@ func (b *Log) Msg(msg ...any) {
 
 // Msgf outputs a formatted log message.
 func (b *Log) Msgf(msg string, v ...any) {
-	if b.depth != 0 {
-		msg = codeline(b.depth) + msg
-	}
 	if b.traceId != "" {
 		msg = fmt.Sprintf("traceId:[%s] ", b.traceId) + msg
 	}
@@ -233,23 +235,24 @@ func (b *Log) Msgf(msg string, v ...any) {
 		v = append(v, TakeStacktrace(b.depth+1))
 	}
 	event := b.Event()
+	if b.depth != 0 {
+		lineDesc, fn := codeline(b.depth)
+		event = event.Str("codeline", lineDesc)
+		event = event.Str("func", fn)
+	}
 	if b.err != nil {
 		event = event.Err(b.err)
 	}
 	event.Msgf(msg, v...)
 }
 
-func codeline(n int) string {
+func codeline(n int) (lineDesc string, fn string) {
 	funcName, file, line, ok := runtime.Caller(n)
 	if !ok {
-		return ""
+		return "", ""
 	}
 	if i := strings.Index(file, "src/"); i >= 0 {
-		return "[" + file[i+4:] + ":" + strconv.Itoa(line) + " " + runtime.FuncForPC(funcName).Name() + "] "
+		return fmt.Sprintf("%s:%d", file[i+4:], line), runtime.FuncForPC(funcName).Name()
 	}
-	return "[" + file + ":" + strconv.Itoa(line) + " " + runtime.FuncForPC(funcName).Name() + "] "
-}
-
-func runInK8S() bool {
-	return strings.EqualFold(os.Getenv("LogEnv"), "k8s")
+	return fmt.Sprintf("%s:%d", file, line), runtime.FuncForPC(funcName).Name()
 }

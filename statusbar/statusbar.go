@@ -22,6 +22,7 @@ type StatusBar struct {
 	startTime  time.Time
 	taskName   string
 	mu         sync.RWMutex
+	writeMu    sync.Mutex // serializes all writes to out (render + external writers)
 	stopCh     chan struct{}
 	doneCh     chan struct{}
 	running    bool
@@ -112,6 +113,41 @@ func New(opts ...Option) *StatusBar {
 	return bar
 }
 
+// Writer returns an io.Writer that serializes external writes with the status bar's
+// render loop. Pass this as the output writer for any logger so that log lines and
+// status bar drawing never interleave on the terminal.
+//
+// Example:
+//
+//	bar := statusbar.New()
+//	bar.Start()
+//	defer bar.Stop()
+//
+//	logger := log.New(log.WithOutput(log.NewConsoleWriter(log.WithConsoleWriter(bar.Writer()))))
+func (sb *StatusBar) Writer() io.Writer {
+	return &statusBarWriter{sb: sb}
+}
+
+// statusBarWriter is an io.Writer that acquires writeMu before writing,
+// ensuring mutual exclusion with render().
+type statusBarWriter struct {
+	sb *StatusBar
+}
+
+func (w *statusBarWriter) Write(p []byte) (n int, err error) {
+	w.sb.writeMu.Lock()
+	defer w.sb.writeMu.Unlock()
+	return w.sb.out.Write(p)
+}
+
+// write is the single internal path for all terminal output.
+// It holds writeMu so that render() and external writers are mutually exclusive.
+func (sb *StatusBar) write(s string) {
+	sb.writeMu.Lock()
+	_, _ = fmt.Fprint(sb.out, s)
+	sb.writeMu.Unlock()
+}
+
 // SetTask 注册当前执行的方法/任务名称（线程安全）
 func (sb *StatusBar) SetTask(name string) {
 	sb.mu.Lock()
@@ -140,7 +176,7 @@ func (sb *StatusBar) Start() {
 	sb.setupScrollRegion()
 
 	// 隐藏光标
-	_, _ = fmt.Fprint(sb.out, "\033[?25l")
+	sb.write("\033[?25l")
 
 	go sb.loop()
 	go sb.watchResize()
@@ -164,7 +200,7 @@ func (sb *StatusBar) Stop() {
 	// 恢复全屏滚动区域
 	sb.resetScrollRegion()
 	// 显示光标
-	_, _ = fmt.Fprint(sb.out, "\033[?25h")
+	sb.write("\033[?25h")
 }
 
 // updateTermSize 获取并缓存终端尺寸
@@ -205,7 +241,7 @@ func (sb *StatusBar) setupScrollRegion() {
 	// 将光标移回滚动区域内（底部）
 	out += fmt.Sprintf("\033[%d;1H", scrollEnd)
 
-	_, _ = fmt.Fprint(sb.out, out)
+	sb.write(out)
 }
 
 // resetScrollRegion 恢复终端为全屏滚动
@@ -214,10 +250,7 @@ func (sb *StatusBar) resetScrollRegion() {
 	h := sb.termHeight
 	sb.mu.RUnlock()
 
-	// 重置滚动区域为全屏
-	_, _ = fmt.Fprintf(sb.out, "\033[1;%dr", h)
-	// 光标移到原状态栏上方
-	_, _ = fmt.Fprintf(sb.out, "\033[%d;1H", h-reservedLines)
+	sb.write(fmt.Sprintf("\033[1;%dr\033[%d;1H", h, h-reservedLines))
 }
 
 // clearStatusArea 清除底部状态栏区域
@@ -232,7 +265,7 @@ func (sb *StatusBar) clearStatusArea() {
 		out += fmt.Sprintf("\033[%d;1H\033[2K", row)
 	}
 	out += "\0338" // 恢复光标
-	_, _ = fmt.Fprint(sb.out, out)
+	sb.write(out)
 }
 
 // watchResize 监听终端窗口大小变化 (SIGWINCH)，自动调整滚动区域
@@ -320,7 +353,7 @@ func (sb *StatusBar) render() {
 	out += "\033[30;46m" + statusLine + "\033[0m"
 	out += "\0338" // 恢复光标到滚动区域内的原位置
 
-	_, _ = fmt.Fprint(sb.out, out)
+	sb.write(out)
 }
 
 func formatDuration(d time.Duration) string {
