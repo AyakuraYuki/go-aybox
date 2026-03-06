@@ -213,7 +213,7 @@ func (sb *StatusBar) render() {
 	output += "\033[2K"                              // Clear the current line
 	output += "\033[36m" + barLine + "\033[0m"       // Blue separator line
 	output += "\n\033[2K"                            // New line and clear
-	output += "\033[30;46m" + statusLine + "\033[0m" // Text in black on a blue background
+	output += "\033[97;46m" + statusLine + "\033[0m" // Text in black on a blue background
 	output += "\0338"                                // Restore cursor position
 
 	_, _ = fmt.Fprint(os.Stderr, output)
