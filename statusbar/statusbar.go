@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -46,7 +47,7 @@ const (
 
 // StatusBar renders a single-line status display in the terminal showing the
 // current time, program elapsed time, and an optional message. It runs in a
-// background goroutine and serialises all terminal writes through a mutex so
+// background goroutine and serializes all terminal writes through a mutex so
 // that log output interleaved via Writer() does not corrupt the display.
 //
 // Typical usage with the log module:
@@ -124,7 +125,7 @@ func WithWidth(w int) Option {
 // New creates a StatusBar. Call Start to begin rendering.
 // Default style: StyleASCII, cyan background (BgCyan), black foreground (FgBlack).
 // By default, the width is automatically derived from the terminal on every render.
-// Use WithWidth to override this behaviour.
+// Use WithWidth to override this behavior.
 func New(opts ...Option) *StatusBar {
 	s := &StatusBar{
 		startTime: time.Now(),
@@ -189,7 +190,7 @@ func (s *StatusBar) ClearMessage() {
 	s.mu.Unlock()
 }
 
-// Writer returns an io.Writer that serialises writes with the status bar's
+// Writer returns an io.Writer that serializes writes with the status bar's
 // internal mutex. Before each write it clears the current status line; after
 // the write it redraws the status bar, so that log output does not corrupt
 // the display.
@@ -247,7 +248,7 @@ func (s *StatusBar) renderLocked() {
 
 	effectiveWidth := s.width
 	if s.autoWidth {
-		if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		if w := queryTerminalWidth(); w > 0 {
 			effectiveWidth = w
 		}
 	}
@@ -271,6 +272,32 @@ func formatElapsed(d time.Duration) string {
 		return fmt.Sprintf("%02d:%02d:%02d", h, m, sec)
 	}
 	return fmt.Sprintf("%02d:%02d", m, sec)
+}
+
+// queryTerminalWidth probes the current terminal width using several methods
+// to maximize compatibility across platforms and environments:
+//
+//  1. term.GetSize on stdout, stderr, and stdin (in that order) — covers most
+//     native shells on Windows (cmd / PowerShell / Windows Terminal), macOS,
+//     and Linux, as well as JetBrains IDE run windows that back their output
+//     pane with a PTY.
+//  2. The COLUMNS environment variable — a fallback that works in shells that
+//     export it (bash, zsh, fish) and in JetBrains run configurations where
+//     the PTY size is not surfaced via ioctl.
+//
+// Returns 0 when none of the probes succeed, signaling "no constraint".
+func queryTerminalWidth() int {
+	for _, f := range []*os.File{os.Stdout, os.Stderr, os.Stdin} {
+		if w, _, err := term.GetSize(int(f.Fd())); err == nil && w > 0 {
+			return w
+		}
+	}
+	if cols := os.Getenv("COLUMNS"); cols != "" {
+		if w, err := strconv.Atoi(cols); err == nil && w > 0 {
+			return w
+		}
+	}
+	return 0
 }
 
 // runeDisplayWidth returns the number of terminal columns a rune occupies.
