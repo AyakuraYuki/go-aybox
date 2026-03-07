@@ -9,16 +9,15 @@ import (
 	"time"
 
 	"golang.org/x/term"
+	"golang.org/x/text/width"
 )
 
 // Style controls the visual presentation of the status bar.
 type Style int
 
 const (
-	// StyleASCII uses plain ASCII separators.
-	StyleASCII Style = iota
-	// StyleEmoji uses emoji icons as field indicators.
-	StyleEmoji
+	StyleASCII Style = iota // StyleASCII uses plain ASCII separators.
+	StyleEmoji              // StyleEmoji uses emoji icons as field indicators.
 )
 
 // ANSI foreground color codes.
@@ -304,43 +303,19 @@ func queryTerminalWidth() int {
 }
 
 // runeDisplayWidth returns the number of terminal columns a rune occupies.
-// Emoji and other wide characters (East Asian wide/fullwidth) count as 2;
-// control characters count as 0; everything else counts as 1.
+// It delegates to golang.org/x/text/width which implements the Unicode East
+// Asian Width standard: Wide and Fullwidth characters (including emoji and CJK)
+// count as 2; control characters count as 0; everything else counts as 1.
 func runeDisplayWidth(r rune) int {
-	switch {
-	case r < 0x20 || r == 0x7F:
+	if r < 0x20 || r == 0x7F {
 		return 0
-	case r >= 0x1100 && (r <= 0x115F || // Hangul Jamo
-		r == 0x2329 || r == 0x232A ||
-		(r >= 0x2E80 && r <= 0x303E) || // CJK Radicals … CJK Symbols
-		(r >= 0x3040 && r <= 0x33FF) || // Hiragana … CJK Compatibility
-		(r >= 0x3400 && r <= 0x4DBF) || // CJK Ext-A
-		(r >= 0x4E00 && r <= 0xA4CF) || // CJK Unified … Yi
-		(r >= 0xA960 && r <= 0xA97F) || // Hangul Jamo Ext-A
-		(r >= 0xAC00 && r <= 0xD7FF) || // Hangul Syllables
-		(r >= 0xF900 && r <= 0xFAFF) || // CJK Compatibility Ideographs
-		(r >= 0xFE10 && r <= 0xFE1F) || // Vertical Forms
-		(r >= 0xFE30 && r <= 0xFE6F) || // CJK Compatibility Forms
-		(r >= 0xFF01 && r <= 0xFF60) || // Fullwidth Latin
-		(r >= 0xFFE0 && r <= 0xFFE6) || // Fullwidth Signs
-		(r >= 0x1B000 && r <= 0x1B0FF) || // Kana Supplement
-		(r >= 0x1F004 && r <= 0x1F0CF) || // Mahjong / Playing cards
-		(r >= 0x1F300 && r <= 0x1F9FF) || // Misc Symbols / Emoji
-		(r >= 0x20000 && r <= 0x2FFFD) || // CJK Ext-B … Supp Ideo
-		(r >= 0x30000 && r <= 0x3FFFD)):
+	}
+	switch width.LookupRune(r).Kind() {
+	case width.EastAsianWide, width.EastAsianFullwidth:
 		return 2
 	default:
 		return 1
 	}
-}
-
-// displayWidth returns the total number of terminal columns the string occupies.
-func displayWidth(s string) int {
-	w := 0
-	for _, r := range s {
-		w += runeDisplayWidth(r)
-	}
-	return w
 }
 
 // fitWidth truncates or right-pads s so that its display width equals exactly n.
