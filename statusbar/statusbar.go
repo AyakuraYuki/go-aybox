@@ -170,8 +170,11 @@ func (s *StatusBar) Stop() {
 
 	close(s.stopCh)
 
+	// Render the final frame and move the cursor to a new line so the status
+	// bar remains visible in the terminal and subsequent output is unaffected.
 	s.mu.Lock()
-	_, _ = fmt.Fprint(s.out, "\r\033[K")
+	s.renderLocked()
+	_, _ = fmt.Fprint(s.out, "\n")
 	s.mu.Unlock()
 }
 
