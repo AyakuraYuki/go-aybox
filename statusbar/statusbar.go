@@ -44,6 +44,25 @@ const (
 	BgWhite   = 47
 )
 
+// ANSI escape sequences for cursor positioning and scrolling.
+const (
+	CursorUp            = "\033[A"
+	CursorDown          = "\033[B"
+	CursorRight         = "\033[C"
+	CursorLeft          = "\033[D"
+	CursorNextLine      = "\033[E"
+	CursorPrevLine      = "\033[F"
+	CursorToColumn      = "\033[%dG"
+	CursorToPosition    = "\033[%d;%dH"
+	SaveCursorPos       = "\033[s"
+	RestoreCursorPos    = "\033[u"
+	ClearLine           = "\033[K"
+	ClearScreen         = "\033[2J"
+	EnableScrolling     = "\033[r"
+	DisableScrolling    = "\033[?7l"
+	EnableScrollingBack = "\033[?7h"
+)
+
 // StatusBar renders a single-line status display in the terminal showing the
 // current time, program elapsed time, and an optional message. It runs in a
 // background goroutine and serializes all terminal writes through a mutex so
@@ -51,24 +70,26 @@ const (
 //
 // Typical usage with the log module:
 //
-//	bar := statusbar.New()
+//	bar := statusbar.New(statusbar.WithFixedToBottom())
 //	cw  := console.New(console.WithWriter(bar.Writer()))
 //	logger := log.New(log.WithWriters(cw))
 //	bar.Start()
 //	defer bar.Stop()
 type StatusBar struct {
-	mu        sync.Mutex
-	startTime time.Time
-	message   string
-	out       io.Writer
-	interval  time.Duration
-	stopCh    chan struct{}
-	running   bool
-	style     Style
-	fgColor   int
-	bgColor   int
-	width     int  // 0 means no constraint; overridden by autoWidth at render time
-	autoWidth bool // when true, query terminal width on each render
+	mu            sync.Mutex
+	startTime     time.Time
+	message       string
+	out           io.Writer
+	interval      time.Duration
+	stopCh        chan struct{}
+	running       bool
+	style         Style
+	fgColor       int
+	bgColor       int
+	width         int  // 0 means no constraint; overridden by autoWidth at render time
+	autoWidth     bool // when true, query terminal width on each render
+	fixedToBottom bool // status bar fixed to shell bottom
+	height        int  // Terminal height, queried dynamically
 }
 
 // Option configures a StatusBar at construction time.
@@ -121,6 +142,17 @@ func WithWidth(w int) Option {
 	}
 }
 
+// WithFixedToBottom enables the feature to keep the status bar fixed at the
+// bottom of the terminal window.
+// When fixed to bottom, auto-width should be enabled for proper fitting.
+func WithFixedToBottom() Option {
+	return func(s *StatusBar) {
+		s.fixedToBottom = true
+		s.autoWidth = true
+		s.width = 0
+	}
+}
+
 // New creates a StatusBar. Call Start to begin rendering.
 // Default style: StyleASCII, cyan background (BgCyan), black foreground (FgBlack).
 // By default, the width is automatically derived from the terminal on every render.
@@ -135,6 +167,9 @@ func New(opts ...Option) *StatusBar {
 		fgColor:   FgBlack,
 		bgColor:   BgCyan,
 		autoWidth: true,
+		// Initialize new fields
+		fixedToBottom: false,
+		height:        0,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -153,6 +188,8 @@ func (s *StatusBar) Start() {
 	s.running = true
 	s.mu.Unlock()
 
+	// If fixed to bottom, we might want to reserve space or manage screen differently.
+	// For simplicity here, we just start the loop which will handle positioning.
 	go s.loop()
 }
 
@@ -172,8 +209,15 @@ func (s *StatusBar) Stop() {
 	// Render the final frame and move the cursor to a new line so the status
 	// bar remains visible in the terminal and subsequent output is unaffected.
 	s.mu.Lock()
+
+	// If fixed to bottom, restore normal scrolling and move cursor past our line
+	if s.fixedToBottom {
+		fmt.Fprintf(s.out, EnableScrollingBack) // Re-enable scrolling
+		fmt.Fprintf(s.out, CursorNextLine)      // Move to next line below status bar
+	}
+
 	s.renderLocked()
-	_, _ = fmt.Fprint(s.out, "\n")
+	fmt.Fprint(s.out, "\n")
 	s.mu.Unlock()
 }
 
@@ -258,10 +302,38 @@ func (s *StatusBar) renderLocked() {
 		content = fitWidth(content, effectiveWidth)
 	}
 
-	// \033[K fills the rest of the line with the active background color,
-	// then \033[0m resets all attributes.
-	_, _ = fmt.Fprintf(s.out, "\r\033[%dm\033[%dm%s\033[K\033[0m",
-		s.bgColor, s.fgColor, content)
+	// Prepare the final output string for the status bar
+	statusBarOutput := fmt.Sprintf("\033[%dm\033[%dm%s\033[K\033[0m", s.bgColor, s.fgColor, content)
+
+	if s.fixedToBottom {
+		// --- Fixed-to-bottom logic ---
+
+		// 1. Query terminal height
+		h := queryTerminalHeight()
+		if h <= 0 {
+			// If we can't get height, fall back to standard rendering
+			fmt.Fprintf(s.out, "\r%s", statusBarOutput)
+			return
+		}
+		s.height = h // Store for potential future use if needed
+
+		// 2. Disable general scrolling for the full screen
+		// This prevents other output from pushing our status bar up.
+		fmt.Fprint(s.out, DisableScrolling)
+
+		// 3. Move cursor to the last line (height-th row)
+		// ANSI escape sequence for cursor position is \033[row;colH
+		// Row and col are 1-indexed.
+		moveCmd := fmt.Sprintf(CursorToPosition, h, 1)
+		fmt.Fprint(s.out, moveCmd)
+
+		// 4. Print the status bar content on that fixed line
+		fmt.Fprint(s.out, statusBarOutput)
+
+	} else {
+		// --- Standard logic (existing behavior) ---
+		fmt.Fprintf(s.out, "\r%s", statusBarOutput)
+	}
 }
 
 // formatElapsed formats d as hh:mm:ss, omitting the hours group when zero.
@@ -274,6 +346,25 @@ func formatElapsed(d time.Duration) string {
 		return fmt.Sprintf("%02d:%02d:%02d", h, m, sec)
 	}
 	return fmt.Sprintf("%02d:%02d", m, sec)
+}
+
+// queryTerminalHeight probes the current terminal height.
+// It follows the same strategy as queryTerminalWidth but for rows (lines).
+// 1. term.GetSize on stdout, stderr, and stdin.
+// 2. The LINES environment variable.
+// Returns 0 when none of the probes succeed.
+func queryTerminalHeight() int {
+	for _, f := range []*os.File{os.Stdout, os.Stderr, os.Stdin} {
+		if _, h, err := term.GetSize(int(f.Fd())); err == nil && h > 0 {
+			return h
+		}
+	}
+	if lines := os.Getenv("LINES"); lines != "" {
+		if h, err := strconv.Atoi(lines); err == nil && h > 0 {
+			return h
+		}
+	}
+	return 0
 }
 
 // queryTerminalWidth probes the current terminal width using several methods
@@ -354,17 +445,63 @@ func (w *statusWriter) Write(p []byte) (n int, err error) {
 	w.bar.mu.Lock()
 	defer w.bar.mu.Unlock()
 
-	// Clear the current status line before writing the log content.
-	_, _ = fmt.Fprint(w.bar.out, "\r\033[K")
+	// --- Modified logic for fixed-to-bottom ---
 
-	n, err = w.bar.out.Write(p)
-	if err != nil {
-		return
-	}
+	if w.bar.fixedToBottom && w.bar.running {
+		// If fixed to bottom, we need to temporarily move away from the status bar line
+		// to print the log message, then come back.
 
-	// Redraw the status bar on the same line (log output already ended with \n).
-	if w.bar.running {
+		// 1. Get the height to know where the status bar is
+		h := queryTerminalHeight()
+		if h <= 0 {
+			// Fallback: behave like original code if height unknown
+			_, _ = fmt.Fprint(w.bar.out, "\r"+ClearLine)
+			n, err = w.bar.out.Write(p)
+			if err == nil && w.bar.running {
+				w.bar.renderLocked()
+			}
+			return
+		}
+
+		// 2. Save cursor position (optional, but good practice)
+		_, _ = fmt.Fprint(w.bar.out, SaveCursorPos)
+
+		// 3. Move cursor to a safe line above the status bar (e.g., h-1)
+		// We assume other program output goes above our fixed line.
+		// This step might be complex if we don't control other output.
+		// A simpler approach: just print the log, knowing it will scroll normally
+		// except for our fixed bottom line due to \033[r disabling scrolling for the whole screen.
+		// The key is that renderLocked() always repositions and redraws the status bar.
+
+		// Let's print the log normally, relying on the renderLocked logic to fix the bottom.
+		// First, clear the current line where the log might appear (though this is less critical now)
+		// Then print the log
+		_, _ = fmt.Fprint(w.bar.out, "\r"+ClearLine) // Clear current line before log
+		n, err = w.bar.out.Write(p)
+		if err != nil {
+			return
+		}
+
+		// 4. Restore the status bar by calling renderLocked again.
+		// This will reposition the cursor to the bottom line and redraw it.
 		w.bar.renderLocked()
+
+		// 5. Restore the saved cursor position (optional, depends on desired behavior)
+		// fmt.Fprint(w.bar.out, RestoreCursorPos) // This might be confusing if logs were printed.
+		// For log writers, it's usually better to let the cursor stay after the log line.
+		// So, we comment out the restore here. The status bar will be there anyway.
+	} else {
+		// Original logic for non-fixed status bar
+		_, _ = fmt.Fprint(w.bar.out, "\r"+ClearLine) // Clear the current status line before writing log
+		n, err = w.bar.out.Write(p)
+		if err != nil {
+			return
+		}
+		// Redraw the status bar on the same line (log output already ended with \n).
+		if w.bar.running {
+			w.bar.renderLocked()
+		}
 	}
+
 	return
 }

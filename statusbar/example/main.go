@@ -11,7 +11,8 @@ import (
 
 func main() {
 	bar := statusbar.New(
-		statusbar.WithOutput(os.Stdout))
+		statusbar.WithOutput(os.Stdout),
+		statusbar.WithFixedToBottom())
 	log.Configure(log.WithWriters(console.New(console.WithWriter(bar.Writer()))))
 
 	bar.Start()
