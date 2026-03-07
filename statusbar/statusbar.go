@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"golang.org/x/term"
+	"golang.org/x/text/width"
 )
 
 const reservedLines = 2 // 状态栏占用的底部行数（分隔线 + 状态行）
@@ -391,11 +392,7 @@ func formatDuration(d time.Duration) string {
 func visibleLength(s string) int {
 	n := 0
 	for _, r := range s {
-		if r > 0x1F00 {
-			n += 2
-		} else {
-			n++
-		}
+		n += runeWidth(r)
 	}
 	return n
 }
@@ -403,14 +400,22 @@ func visibleLength(s string) int {
 func truncateVisible(s string, maxWidth int) string {
 	n := 0
 	for i, r := range s {
-		w := 1
-		if r > 0x1F00 {
-			w = 2
-		}
+		w := runeWidth(r)
 		if n+w > maxWidth {
 			return s[:i]
 		}
 		n += w
 	}
 	return s
+}
+
+// runeWidth returns the terminal column width of a single rune.
+// EastAsianWide (W) and EastAsianFullwidth (F) kinds occupy 2 columns; all others occupy 1.
+func runeWidth(r rune) int {
+	switch width.LookupRune(r).Kind() {
+	case width.EastAsianWide, width.EastAsianFullwidth:
+		return 2
+	default:
+		return 1
+	}
 }
