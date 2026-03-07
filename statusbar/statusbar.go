@@ -231,15 +231,10 @@ func (sb *StatusBar) setupScrollRegion() {
 		scrollEnd = 1
 	}
 
-	out := ""
-	// 先输出空行，为底部状态栏腾出空间
-	for i := 0; i < reservedLines; i++ {
-		out += "\n"
-	}
-	// 设置滚动区域：第 1 行 ~ 第 scrollEnd 行
+	out := "\0337" // 保存当前光标位置
+	// 设置滚动区域：第 1 行 ~ 第 scrollEnd 行（底部 reservedLines 行留给状态栏）
 	out += fmt.Sprintf("\033[1;%dr", scrollEnd)
-	// 将光标移回滚动区域内（底部）
-	out += fmt.Sprintf("\033[%d;1H", scrollEnd)
+	out += "\0338" // 恢复光标到原位，避免跳转到底部造成大片空白
 
 	sb.write(out)
 }
