@@ -1,11 +1,12 @@
 package statusbar
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
-	"strings"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -14,6 +15,14 @@ import (
 )
 
 const reservedLines = 2 // 状态栏占用的底部行数（分隔线 + 状态行）
+
+// renderBufPool recycles byte buffers used by render, avoiding per-frame heap
+// allocations for ANSI escape sequence output assembly.
+var renderBufPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
+	},
+}
 
 // StatusBar 是一个非阻塞的底部状态栏，以协程方式运行。
 // 使用 ANSI Scroll Region 技术将终端分为上方滚动区和底部固定区，
@@ -144,7 +153,7 @@ func (w *statusBarWriter) Write(p []byte) (n int, err error) {
 // It holds writeMu so that render() and external writers are mutually exclusive.
 func (sb *StatusBar) write(s string) {
 	sb.writeMu.Lock()
-	_, _ = fmt.Fprint(sb.out, s)
+	_, _ = io.WriteString(sb.out, s)
 	sb.writeMu.Unlock()
 }
 
@@ -315,47 +324,61 @@ func (sb *StatusBar) render() {
 	now := time.Now()
 	elapsed := now.Sub(start)
 
-	// 构建各段内容
-	timePart := fmt.Sprintf("%s %s", sb.style.TimeIcon, now.Format("15:04:05"))
-	elapsedPart := fmt.Sprintf("%s %s", sb.style.ElapsedIcon, formatDuration(elapsed))
-
-	var taskPart string
+	// 构建状态行内容（需先计算可见长度以决定截断或填充）
+	content := " " + sb.style.TimeIcon + " " + now.Format("15:04:05") +
+		sb.style.Separator +
+		sb.style.ElapsedIcon + " " + formatDuration(elapsed)
 	if task != "" {
-		taskPart = fmt.Sprintf("%s %s", sb.style.TaskIcon, task)
+		content += sb.style.Separator + sb.style.TaskIcon + " " + task
 	}
 
-	// 组装内容
-	content := " " + timePart + sb.style.Separator + elapsedPart
-	if taskPart != "" {
-		content = content + sb.style.Separator + taskPart
-	}
-
-	// 分隔线行
-	barLine := sb.style.RightCap + strings.Repeat(sb.style.BarChar, max(0, w-2)) + sb.style.LeftCap
-	// 状态行（填充至整行宽度）
-	statusLine := padOrTruncate(content, w)
-
-	// 定位到固定区域绘制（滚动区域之外，不受滚动影响）
 	barRow := h - 1 // 分隔线所在行
 	statusRow := h  // 状态信息所在行
 
-	out := "\0337" // 保存光标位置
-	// 绘制分隔线
-	out += fmt.Sprintf("\033[%d;1H\033[2K", barRow)
-	out += "\033[36m" + barLine + "\033[0m"
-	// 绘制状态行
-	out += fmt.Sprintf("\033[%d;1H\033[2K", statusRow)
-	out += "\033[30;46m" + statusLine + "\033[0m"
-	out += "\0338" // 恢复光标到滚动区域内的原位置
+	// 从池中取出复用 buffer，避免每帧堆分配
+	buf := renderBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer func() {
+		buf.Reset()
+		renderBufPool.Put(buf)
+	}()
 
-	sb.write(out)
+	buf.WriteString("\0337") // 保存光标位置
+	// 绘制分隔线
+	buf.WriteString("\033[")
+	buf.WriteString(strconv.Itoa(barRow))
+	buf.WriteString(";1H\033[2K\033[36m")
+	buf.WriteString(sb.style.RightCap)
+	for i := 0; i < max(0, w-2); i++ {
+		buf.WriteString(sb.style.BarChar)
+	}
+	buf.WriteString(sb.style.LeftCap)
+	buf.WriteString("\033[0m")
+	// 绘制状态行
+	buf.WriteString("\033[")
+	buf.WriteString(strconv.Itoa(statusRow))
+	buf.WriteString(";1H\033[2K\033[30;46m")
+	visLen := visibleLength(content)
+	if visLen >= w {
+		buf.WriteString(truncateVisible(content, w))
+	} else {
+		buf.WriteString(content)
+		for i := 0; i < w-visLen+3; i++ {
+			buf.WriteByte(' ')
+		}
+	}
+	buf.WriteString("\033[0m")
+	buf.WriteString("\0338") // 恢复光标到滚动区域内的原位置
+
+	sb.writeMu.Lock()
+	_, _ = buf.WriteTo(sb.out)
+	sb.writeMu.Unlock()
 }
 
 func formatDuration(d time.Duration) string {
 	h := int(d.Hours())
 	m := int(d.Minutes()) % 60
 	s := int(d.Seconds()) % 60
-
 	if h > 0 {
 		return fmt.Sprintf("%dh%02dm%02ds", h, m, s)
 	}
@@ -363,14 +386,6 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dm%02ds", m, s)
 	}
 	return fmt.Sprintf("%ds", s)
-}
-
-func padOrTruncate(s string, width int) string {
-	visLen := visibleLength(s)
-	if visLen >= width {
-		return truncateVisible(s, width)
-	}
-	return s + strings.Repeat(" ", width-visLen+3)
 }
 
 func visibleLength(s string) int {
