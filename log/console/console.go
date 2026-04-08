@@ -13,8 +13,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/rs/zerolog"
-
-	"github.com/AyakuraYuki/go-aybox/env"
+	"golang.org/x/term"
 )
 
 var _ zerolog.LevelWriter = (*Writer)(nil)
@@ -52,7 +51,7 @@ type Option func(*Writer)
 func New(opts ...Option) *Writer {
 	writer := &Writer{
 		level:   zerolog.DebugLevel,
-		noColor: env.RunsInK8S(),
+		noColor: !IsColorSupported(),
 		out:     os.Stdout,
 	}
 	for _, opt := range opts {
@@ -180,6 +179,42 @@ func needsQuote(s string) bool {
 		}
 	}
 	return false
+}
+
+// IsColorSupported reports current environment allows for color printing.
+func IsColorSupported() bool {
+	// 1. Follow the NO_COLOR standard convention (https://no-color.org/)
+	if _, exists := os.LookupEnv("NO_COLOR"); exists {
+		return false
+	}
+
+	// 2. TERM=dumb explicitly indicates that the terminal does not support color.
+	if strings.EqualFold(os.Getenv("TERM"), "dumb") {
+		return false
+	}
+
+	// 3. Detecting the systemd managed environment (INVOCATION_ID is injected by systemd)
+	if os.Getenv("INVOCATION_ID") != "" {
+		return false
+	}
+
+	// 4. Detecting the Kubernetes environment
+	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+		return false
+	}
+
+	// 5. Detect Docker containers (/.dockerenv is a flag file injected by Docker).
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return false
+	}
+
+	// 6. The most crucial factor to consider: whether stdout is a real TTY.
+	//    systemd, supervisor, pipe redirection, and Kubernetes pods are not TTY.
+	if !term.IsTerminal(int(os.Stdout.Fd())) {
+		return false
+	}
+
+	return true
 }
 
 func WithLogLevel(level zerolog.Level) Option {
