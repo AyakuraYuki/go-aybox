@@ -18,8 +18,7 @@ import (
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 
 	"github.com/AyakuraYuki/go-aybox/log"
-	ayStack "github.com/AyakuraYuki/go-aybox/stack"
-	"github.com/AyakuraYuki/go-aybox/trace"
+	ayStack "github.com/AyakuraYuki/go-aybox/stacktraces"
 )
 
 func jaegerHost() string {
@@ -48,7 +47,7 @@ func NewJaegerTracer(serviceName, env string) (opentracing.Tracer, io.Closer, er
 	tracer, closer, err := cfg.NewTracer()
 
 	if err != nil {
-		log.Error(trace.FuncName()).Err(err).Msgf("%v", err)
+		log.Error(ayStack.FuncName()).Err(err).Msgf("%v", err)
 	}
 	if tracer != nil {
 		opentracing.SetGlobalTracer(tracer)
