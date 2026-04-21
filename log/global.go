@@ -33,22 +33,27 @@ func Configure(opts ...Option) {
 
 // Debug returns a *Log at debug level from the global Logger.
 func Debug(name ...string) *Log {
-	return defaultLogger.Debug(name...)
+	return defaultLogger.DebugL(name...)
 }
 
 // Info returns a *Log at info level from the global Logger.
 func Info(name ...string) *Log {
-	return defaultLogger.Info(name...)
+	return defaultLogger.InfoL(name...)
 }
 
 // Warn returns a *Log at warn level from the global Logger.
 func Warn(name ...string) *Log {
-	return defaultLogger.Warn(name...)
+	return defaultLogger.WarnL(name...)
 }
 
 // Error returns a *Log at error level from the global Logger.
 func Error(name ...string) *Log {
-	return defaultLogger.Error(name...)
+	return defaultLogger.ErrorL(name...)
+}
+
+// Fatal returns a *Log at fatal level from the global Logger.
+func Fatal(name ...string) *Log {
+	return defaultLogger.FatalL(name...)
 }
 
 // Sample returns a *Context with sampling enabled from the global Logger.

@@ -31,7 +31,7 @@ func BenchmarkDisabled(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			logger.Info().Msg(fakeMessage)
+			logger.InfoL().Msg(fakeMessage)
 		}
 	})
 }
@@ -41,7 +41,7 @@ func BenchmarkInfo(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			logger.Info().Msg(fakeMessage)
+			logger.InfoL().Msg(fakeMessage)
 		}
 	})
 }
@@ -57,7 +57,7 @@ func BenchmarkContextFields(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			logger.Info().Msg(fakeMessage)
+			logger.InfoL().Msg(fakeMessage)
 		}
 	})
 }
@@ -79,7 +79,7 @@ func BenchmarkLogFields(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			logger.Info().
+			logger.InfoL().
 				Str("string", "four!").
 				Time("time", time.Time{}).
 				Int("int", 123).
@@ -113,6 +113,6 @@ func BenchmarkLogArrayObject(b *testing.B) {
 		arr.Object(&obj1)
 		arr.Object(&obj2)
 		arr.Object(&obj3)
-		logger.Info().Array("objects", arr).Msg("test")
+		logger.InfoL().Array("objects", arr).Msg("test")
 	}
 }

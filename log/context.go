@@ -67,6 +67,15 @@ func (c *Context) Error(name ...string) *Log {
 	return c.newLog(zerolog.ErrorLevel, name...)
 }
 
+// Fatal returns a *Log at fatal level.
+// Returns nil when c is nil, mirroring the nil *Log fast-path.
+func (c *Context) Fatal(name ...string) *Log {
+	if c == nil {
+		return nil
+	}
+	return c.newLog(zerolog.FatalLevel, name...)
+}
+
 // KV returns a new Context with an additional string field shared across all
 // log entries created from it. Returns nil when c is nil.
 // This is setup-time and not in the hot path.

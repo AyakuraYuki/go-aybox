@@ -75,21 +75,21 @@ func (l *dbLog) LogMode(level logger.LogLevel) logger.Interface {
 // Info print info
 func (l *dbLog) Info(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Info {
-		l.zl.Info(dbLogName).Msgf(l.infoStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
+		l.zl.InfoL(dbLogName).Msgf(l.infoStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
 // Warn print warn messages
 func (l *dbLog) Warn(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Warn {
-		l.zl.Warn(dbLogName).Msgf(l.warnStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
+		l.zl.WarnL(dbLogName).Msgf(l.warnStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
 // Error print error messages
 func (l *dbLog) Error(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Error {
-		l.zl.Error(dbLogName).Msgf(l.errStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
+		l.zl.ErrorL(dbLogName).Msgf(l.errStr+msg, append([]any{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
@@ -123,7 +123,7 @@ func (l *dbLog) Trace(ctx context.Context, begin time.Time, fc func() (string, i
 			logStr = fmt.Sprintf(l.traceErrStr, utils.FileWithLineNum(), err, float64(elapsed.Nanoseconds())/1e6, rows, sql)
 		}
 
-		l.zl.Error(dbLogName).Msg(logStr)
+		l.zl.ErrorL(dbLogName).Msg(logStr)
 
 	case elapsed > l.SlowThreshold && l.SlowThreshold != 0 && l.LogLevel >= logger.Warn:
 		slowLog := fmt.Sprintf("SLOW SQL >= %v", l.SlowThreshold)
@@ -134,13 +134,13 @@ func (l *dbLog) Trace(ctx context.Context, begin time.Time, fc func() (string, i
 		} else {
 			logStr = fmt.Sprintf(l.traceWarnStr, utils.FileWithLineNum(), slowLog, float64(elapsed.Nanoseconds())/1e6, rows, sql)
 		}
-		l.zl.Warn(dbSQLSlow).Msg(logStr)
+		l.zl.WarnL(dbSQLSlow).Msg(logStr)
 
 	case l.LogLevel == logger.Info:
 		if rows == -1 {
-			l.zl.Info(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, "-", sql)
+			l.zl.InfoL(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, "-", sql)
 		} else {
-			l.zl.Info(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, rows, sql)
+			l.zl.InfoL(dbLogName).Msgf(l.traceStr, utils.FileWithLineNum(), float64(elapsed.Nanoseconds())/1e6, rows, sql)
 		}
 	}
 }
